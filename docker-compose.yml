@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: crede
+      POSTGRES_PASSWORD: crede
+      POSTGRES_DB: crede
+    ports:
+      - "5434:5432"
+    volumes:
+      - crede_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crede"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - crede_minio:/data
+
+  api:
+    build: ./apps/api
+    ports:
+      - "8008:8008"
+    environment:
+      DATABASE_URL: postgresql://crede:crede@postgres:5432/crede
+      SECRET_KEY: local-dev-secret
+      ACCOUNTS_URL: http://host.docker.internal:1997
+      CORS_ORIGINS: http://localhost:3001
+      COOKIE_SECURE: "false"
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minio
+      S3_SECRET_KEY: minio123
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  crede_pg:
+  crede_minio:

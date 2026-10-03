@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --surface: #f8fafc;
+  --border: #e2e8f0;
+  --foreground: #0f172a;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+}
+
+.dark {
+  --background: #09090b;
+  --surface: #18181b;
+  --border: #27272a;
+  --foreground: #fafafa;
+  --muted: #a1a1aa;
+  --accent: #3b82f6;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex h-btn items-center justify-center rounded-btn px-5 text-sm font-medium transition;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-white hover:opacity-90;
+  }
+  .btn-secondary {
+    @apply btn border border-border bg-surface text-foreground hover:bg-border/40;
+  }
+  .card {
+    @apply rounded-card border border-border bg-surface p-5;
+  }
+  .input {
+    @apply h-btn w-full rounded-btn border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-accent/30;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-foreground;
+  }
+}
