@@ -1,20 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: crede
-      POSTGRES_PASSWORD: crede
-      POSTGRES_DB: crede
-    ports:
-      - "5434:5432"
-    volumes:
-      - crede_pg:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U crede"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
@@ -32,7 +16,7 @@ services:
     ports:
       - "8008:8008"
     environment:
-      DATABASE_URL: postgresql://crede:crede@postgres:5432/crede
+      DATABASE_URL: postgresql://crede:crede@postgres:5432/credes
       SECRET_KEY: local-dev-secret
       ACCOUNTS_URL: http://host.docker.internal:1997
       CORS_ORIGINS: http://localhost:3001
