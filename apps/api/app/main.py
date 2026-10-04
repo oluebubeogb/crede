@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.config import get_settings
 from app.database import Base, engine
@@ -10,9 +11,30 @@ from app.routers import certifications, documents, profile, skills, timeline, ve
 settings = get_settings()
 
 
+def _ensure_schema() -> None:
+    """create_all does not alter existing columns — fix UUID collab_user_id."""
+    Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
+        # profiles.collab_user_id must be string (Collab Accounts UUIDs)
+        row = conn.execute(
+            text(
+                """
+                SELECT data_type FROM information_schema.columns
+                WHERE table_name = 'profiles' AND column_name = 'collab_user_id'
+                """
+            )
+        ).fetchone()
+        if row and row[0] in ("integer", "bigint", "smallint"):
+            conn.execute(
+                text(
+                    "ALTER TABLE profiles ALTER COLUMN collab_user_id TYPE VARCHAR(64) USING collab_user_id::text"
+                )
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    _ensure_schema()
     yield
 
 

@@ -22,24 +22,28 @@ settings = get_settings()
 
 class CollabUser:
     def __init__(self, data: dict):
-        self.id: int = data["id"]
+        # Collab Accounts uses UUID strings for user ids
+        self.id: str = str(data["id"])
         self.email: str = data["email"]
-        self.full_name: Optional[str] = data.get("full_name") or data.get("name")
-        self.products: list[str] = data.get("products") or [
-            p.get("product") if isinstance(p, dict) else p for p in data.get("product_access", [])
+        self.full_name: Optional[str] = (
+            data.get("display_name") or data.get("full_name") or data.get("name")
+        )
+        raw_products = data.get("products") or data.get("product_access") or []
+        self.products: list[str] = [
+            (p.get("product") if isinstance(p, dict) else str(p)).lower()
+            for p in raw_products
         ]
         self.raw = data
 
     @property
     def has_crede(self) -> bool:
-        return "crede" in [str(p).lower() for p in self.products]
+        return "crede" in self.products
 
 
 async def fetch_collab_user(token: str) -> CollabUser:
     url = f"{settings.accounts_url.rstrip('/')}/auth/me"
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(timeout=10.0) as client:
-        # Prefer cookie-style: some setups only accept cookie
         r = await client.get(url, headers=headers, cookies={"access_token": token})
         if r.status_code == 401:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired session")
@@ -62,7 +66,6 @@ async def get_current_collab_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     user = await fetch_collab_user(token)
     if not user.has_crede:
-        # Default product backfill happens on Accounts /auth/me — retry once after me
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Crede access not granted. Open Collab Accounts once or contact support.",
@@ -85,7 +88,6 @@ async def get_or_create_profile(
         db.commit()
         db.refresh(profile)
     else:
-        # Keep email/name in sync lightly
         changed = False
         if collab.email and profile.email != collab.email:
             profile.email = collab.email

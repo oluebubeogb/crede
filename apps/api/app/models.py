@@ -54,7 +54,7 @@ class Profile(Base):
     __tablename__ = "profiles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    collab_user_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    collab_user_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(320), index=True)
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     username: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
