@@ -50,7 +50,7 @@ export default function LandingPage() {
         </div>
         <div className="card relative overflow-hidden">
           <p className="text-xs font-medium uppercase tracking-wider text-muted">Career Timeline</p>
-          <div className="mt-6 space-y-6 border-l-2 border-accent/30 pl-5">
+          <div className="mt-6 space-y-6 border-l-2 border-accent pl-5">
             {[
               { year: "2024", role: "Director of Pharmacy", org: "ABC Hospital Group" },
               { year: "2020", role: "Senior Pharmacist", org: "City Medical Center" },

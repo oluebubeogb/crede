@@ -68,8 +68,8 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-btn px-3 py-2.5 text-sm transition",
                 active
-                  ? "bg-accent/10 font-medium text-accent"
-                  : "text-muted hover:bg-border/50 hover:text-foreground"
+                  ? "font-medium text-accent"
+                  : "text-muted nav-hover"
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
@@ -82,7 +82,7 @@ export function Sidebar() {
         <button
           type="button"
           onClick={toggleTheme}
-          className="flex w-full items-center gap-3 rounded-btn px-3 py-2.5 text-sm text-muted hover:bg-border/50 hover:text-foreground"
+          className="flex w-full items-center gap-3 rounded-btn px-3 py-2.5 text-sm text-muted nav-hover"
         >
           {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           {dark ? "Light mode" : "Dark mode"}

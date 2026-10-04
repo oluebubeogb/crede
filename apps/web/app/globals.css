@@ -38,18 +38,34 @@ body {
     @apply inline-flex h-btn items-center justify-center rounded-btn px-5 text-sm font-medium transition;
   }
   .btn-primary {
-    @apply btn bg-accent text-white hover:opacity-90;
+    @apply btn bg-accent text-white;
+  }
+  .btn-primary:hover {
+    opacity: 0.9;
   }
   .btn-secondary {
-    @apply btn border border-border bg-surface text-foreground hover:bg-border/40;
+    @apply btn border border-border bg-surface text-foreground;
+  }
+  .btn-secondary:hover {
+    background-color: color-mix(in srgb, var(--border) 40%, transparent);
   }
   .card {
     @apply rounded-card border border-border bg-surface p-5;
   }
   .input {
-    @apply h-btn w-full rounded-btn border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-accent/30;
+    @apply h-btn w-full rounded-btn border border-border bg-background px-3 text-sm outline-none;
+  }
+  .input:focus {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
   }
   .label {
     @apply mb-1.5 block text-sm font-medium text-foreground;
+  }
+  .nav-hover:hover {
+    background-color: color-mix(in srgb, var(--border) 50%, transparent);
+    color: var(--foreground);
+  }
+  .badge-muted {
+    background-color: color-mix(in srgb, var(--border) 60%, transparent);
   }
 }

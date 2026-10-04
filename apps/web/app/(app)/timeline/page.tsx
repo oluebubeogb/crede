@@ -106,7 +106,7 @@ export default function TimelinePage() {
               </p>
               <p className="font-medium">{e.job_title}</p>
               <p className="text-sm text-muted">{e.organization}</p>
-              <span className="mt-1 inline-block rounded-full bg-border/60 px-2 py-0.5 text-[11px] text-muted">
+              <span className="mt-1 inline-block rounded-full badge-muted px-2 py-0.5 text-[11px] text-muted">
                 {e.verification_status}
               </span>
             </button>
