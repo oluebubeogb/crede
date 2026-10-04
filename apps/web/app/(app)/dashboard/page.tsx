@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { API, api, getAccountsSession } from "@/lib/api";
 
 type Dashboard = {
   profile: {
@@ -20,23 +20,58 @@ type Dashboard = {
 export default function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
 
   useEffect(() => {
-    api<Dashboard>("/api/profile/dashboard")
-      .then(setData)
-      .catch((e) => setError(e.message));
+    (async () => {
+      try {
+        const session = await getAccountsSession();
+        if (!session) {
+          setError("No Collab session cookie found.");
+          setHint(
+            "Sign in again on /login. Accounts CORS must allow https://crede.collab.name.ng with credentials."
+          );
+          return;
+        }
+        const products = (session.products || []).map((p) => String(p).toLowerCase());
+        if (products.length && !products.includes("crede")) {
+          setError("Collab session OK, but the crede product is not on your account yet.");
+          setHint(
+            "On Accounts, ensure products.py has crede with default=True, then call GET /auth/me once (or log out/in) to backfill."
+          );
+          return;
+        }
+
+        const dash = await api<Dashboard>("/api/profile/dashboard");
+        setData(dash);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Unknown error";
+        setError(msg);
+        if (msg.toLowerCase().includes("failed to fetch")) {
+          setHint(
+            `Browser could not reach ${API}. Check: (1) ${API}/health works (2) Crede API CORS_ORIGINS includes https://crede.collab.name.ng (3) NEXT_PUBLIC_API_URL was set at Docker build time to https://api-crede.collab.name.ng`
+          );
+        } else if (msg.toLowerCase().includes("crede access") || msg.includes("403")) {
+          setHint("Grant crede product on Collab Accounts (default=True + /auth/me backfill).");
+        }
+      }
+    })();
   }, []);
 
   if (error) {
     return (
-      <div className="card">
-        <p className="text-danger">{error}</p>
-        <p className="mt-2 text-sm text-muted">
-          Sign in via Collab Accounts and ensure the <code>crede</code> product is granted.
-        </p>
-        <Link href="/login" className="btn-primary mt-4 inline-flex">
-          Login
-        </Link>
+      <div className="card space-y-3">
+        <p className="font-medium text-danger">{error}</p>
+        {hint && <p className="text-sm text-muted">{hint}</p>}
+        <p className="text-xs text-muted">API base: {API}</p>
+        <div className="flex flex-wrap gap-2 pt-2">
+          <Link href="/login" className="btn-primary">
+            Login
+          </Link>
+          <a href={`${API}/health`} target="_blank" rel="noreferrer" className="btn-secondary">
+            Open API /health
+          </a>
+        </div>
       </div>
     );
   }
