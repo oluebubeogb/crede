@@ -1,5 +1,16 @@
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8008";
 const ACCOUNTS = process.env.NEXT_PUBLIC_ACCOUNTS_URL || "http://localhost:1997";
+
+/**
+ * Browser calls same-origin /backend/* (Next.js rewrite → Crede API).
+ * Avoids cross-origin CORS issues with api-crede.collab.name.ng.
+ * Server-side / build can still use the absolute API URL if needed.
+ */
+function apiBase(): string {
+  if (typeof window !== "undefined") {
+    return "/backend";
+  }
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8008";
+}
 
 export type CollabUser = {
   id: string;
@@ -46,7 +57,9 @@ export async function loginWithCollab(email: string, password: string): Promise<
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
+  const base = apiBase();
+  const url = path.startsWith("http") ? path : `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  const res = await fetch(url, {
     ...init,
     credentials: "include",
     headers: {
@@ -63,10 +76,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const detail = err.detail;
-    throw new Error(typeof detail === "string" ? detail : res.statusText);
+    throw new Error(typeof detail === "string" ? detail : res.statusText || "Request failed");
   }
   if (res.status === 204) return undefined as T;
   return res.json();
 }
 
-export { API, ACCOUNTS };
+export const API = typeof window !== "undefined" ? "/backend" : process.env.NEXT_PUBLIC_API_URL || "";
+export { ACCOUNTS };

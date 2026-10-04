@@ -22,7 +22,7 @@ export default function VerificationPage() {
 
   async function submit(kind: string) {
     const fd = new FormData();
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8008"}/api/verification/${kind}/submit`, {
+    await fetch(`/backend/api/verification/${kind}/submit`, {
       method: "POST",
       credentials: "include",
       body: fd,

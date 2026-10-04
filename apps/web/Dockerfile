@@ -10,9 +10,11 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL=https://api-crede.collab.name.ng
 ARG NEXT_PUBLIC_ACCOUNTS_URL=https://accounts.collab.name.ng
 ARG NEXT_PUBLIC_APP_URL=https://crede.collab.name.ng
+ARG API_PROXY_TARGET=https://api-crede.collab.name.ng
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_ACCOUNTS_URL=$NEXT_PUBLIC_ACCOUNTS_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+ENV API_PROXY_TARGET=$API_PROXY_TARGET
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
@@ -22,6 +24,9 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3001
 ENV HOSTNAME=0.0.0.0
+# Runtime proxy target (standalone server may not re-read next.config env; baked at build)
+ARG API_PROXY_TARGET=https://api-crede.collab.name.ng
+ENV API_PROXY_TARGET=$API_PROXY_TARGET
 
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 

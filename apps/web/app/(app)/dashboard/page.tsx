@@ -49,7 +49,7 @@ export default function DashboardPage() {
         setError(msg);
         if (msg.toLowerCase().includes("failed to fetch")) {
           setHint(
-            `Browser could not reach ${API}. Check: (1) ${API}/health works (2) Crede API CORS_ORIGINS includes https://crede.collab.name.ng (3) NEXT_PUBLIC_API_URL was set at Docker build time to https://api-crede.collab.name.ng`
+            `Browser could not reach the Crede API via /backend proxy. Check API is up and API_PROXY_TARGET/NEXT_PUBLIC_API_URL points to https://api-crede.collab.name.ng
           );
         } else if (msg.toLowerCase().includes("crede access") || msg.includes("403")) {
           setHint("Grant crede product on Collab Accounts (default=True + /auth/me backfill).");
