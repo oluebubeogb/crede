@@ -10,16 +10,17 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret"
     accounts_url: str = "http://localhost:1997"
     accounts_public_url: str = "https://accounts.collab.name.ng"
-    cookie_domain: str = ""
-    cookie_secure: bool = False
-    cors_origins: str = "http://localhost:3001"
+    cookie_domain: str = ".collab.name.ng"
+    cookie_secure: bool = True
+    cookie_samesite: str = "lax"
+    cors_origins: str = "https://crede.collab.name.ng,http://localhost:3001"
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
 
-    s3_endpoint: str = "http://localhost:9000"
-    s3_access_key: str = "minio"
-    s3_secret_key: str = "minio123"
+    s3_endpoint: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
     s3_bucket: str = "crede"
     s3_region: str = "us-east-1"
 
