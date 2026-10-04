@@ -49,7 +49,7 @@ export default function DashboardPage() {
         setError(msg);
         if (msg.toLowerCase().includes("failed to fetch")) {
           setHint(
-            `Browser could not reach the Crede API via /backend proxy. Check API is up and API_PROXY_TARGET/NEXT_PUBLIC_API_URL points to https://api-crede.collab.name.ng
+            "Browser could not reach the Crede API via /backend proxy. Check API is up and rebuild web with API_PROXY_TARGET=https://api-crede.collab.name.ng"
           );
         } else if (msg.toLowerCase().includes("crede access") || msg.includes("403")) {
           setHint("Grant crede product on Collab Accounts (default=True + /auth/me backfill).");
@@ -59,16 +59,17 @@ export default function DashboardPage() {
   }, []);
 
   if (error) {
+    const healthHref = (API || "https://api-crede.collab.name.ng") + "/health";
     return (
       <div className="card space-y-3">
         <p className="font-medium text-danger">{error}</p>
         {hint && <p className="text-sm text-muted">{hint}</p>}
-        <p className="text-xs text-muted">API base: {API}</p>
+        <p className="text-xs text-muted">API base: {API || "/backend"}</p>
         <div className="flex flex-wrap gap-2 pt-2">
           <Link href="/login" className="btn-primary">
             Login
           </Link>
-          <a href={`${API}/health`} target="_blank" rel="noreferrer" className="btn-secondary">
+          <a href={healthHref} target="_blank" rel="noreferrer" className="btn-secondary">
             Open API /health
           </a>
         </div>
@@ -86,7 +87,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">
-          Hello{profile.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}
+          Hello{profile.full_name ? ", " + profile.full_name.split(" ")[0] : ""}
         </h1>
         <p className="mt-1 text-muted">{profile.headline || "Complete your professional profile"}</p>
       </div>
@@ -114,7 +115,7 @@ export default function DashboardPage() {
         <h2 className="font-semibold">Recommended actions</h2>
         <ul className="mt-4 space-y-2">
           {data.recommended_actions.length === 0 && (
-            <li className="text-sm text-muted">You&apos;re in good shape.</li>
+            <li className="text-sm text-muted">You are in good shape.</li>
           )}
           {data.recommended_actions.map((a) => (
             <li key={a}>
