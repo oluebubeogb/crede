@@ -1,3 +1,7 @@
+# Crede Phase 1 — API only
+# Postgres: Coolify managed resource via DATABASE_URL (use postgresql://)
+# Network: join Coolify network so internal DB hostname resolves
+
 services:
   api:
     build: ./apps/api
@@ -18,4 +22,11 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-}
       S3_BUCKET: ${S3_BUCKET:-crede}
       S3_REGION: ${S3_REGION:-us-east-1}
+    networks:
+      - coolify
     restart: unless-stopped
+
+networks:
+  coolify:
+    external: true
+    name: coolify
