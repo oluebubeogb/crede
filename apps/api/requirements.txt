@@ -14,3 +14,5 @@ minio==7.2.12
 reportlab==4.2.5
 python-docx==1.1.2
 redis==5.2.1
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1

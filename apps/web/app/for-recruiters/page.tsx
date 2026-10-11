@@ -11,18 +11,23 @@ export default function ForRecruitersPage() {
           <span className="text-lg font-semibold">Crede</span>
         </Link>
         <Link href="/login" className="btn-primary text-sm">
-          Request Access
+          Get started
         </Link>
       </header>
       <section className="mx-auto max-w-content px-6 py-24 text-center">
         <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Find verified professionals.</h1>
         <p className="mx-auto mt-5 max-w-xl text-lg text-muted">
-          Search trusted candidates based on verified career histories.
+          Search trusted candidates based on verified career histories. Post jobs and match talent from the same
+          source of truth professionals maintain.
         </p>
-        <Link href="/login" className="btn-primary mt-10 inline-flex">
-          Request Access
-        </Link>
-        <p className="mt-8 text-sm text-muted">Recruiter dashboard ships in Phase 2.</p>
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+          <Link href="/login" className="btn-primary inline-flex">
+            Create recruiter account
+          </Link>
+          <Link href="/recruiter/dashboard" className="btn-secondary inline-flex">
+            Open recruiter portal
+          </Link>
+        </div>
       </section>
     </div>
   );

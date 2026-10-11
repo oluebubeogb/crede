@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { API, api, getAccountsSession } from "@/lib/api";
+import { API, api, getSession } from "@/lib/api";
 
 type Dashboard = {
   profile: {
@@ -25,41 +25,26 @@ export default function DashboardPage() {
   useEffect(() => {
     (async () => {
       try {
-        const session = await getAccountsSession();
+        const session = await getSession();
         if (!session) {
-          setError("No Collab session cookie found.");
-          setHint(
-            "Sign in again on /login. Accounts CORS must allow https://crede.collab.name.ng with credentials."
-          );
+          setError("Not signed in.");
+          setHint("Create an account or sign in on /login.");
           return;
         }
-        const products = (session.products || []).map((p) => String(p).toLowerCase());
-        if (products.length && !products.includes("crede")) {
-          setError("Collab session OK, but the crede product is not on your account yet.");
-          setHint(
-            "On Accounts, ensure products.py has crede with default=True, then call GET /auth/me once (or log out/in) to backfill."
-          );
-          return;
-        }
-
         const dash = await api<Dashboard>("/api/profile/dashboard");
         setData(dash);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Unknown error";
         setError(msg);
         if (msg.toLowerCase().includes("failed to fetch")) {
-          setHint(
-            "Browser could not reach the Crede API via /backend proxy. Check API is up and rebuild web with API_PROXY_TARGET=https://api-crede.collab.name.ng"
-          );
-        } else if (msg.toLowerCase().includes("crede access") || msg.includes("403")) {
-          setHint("Grant crede product on Collab Accounts (default=True + /auth/me backfill).");
+          setHint("Could not reach the Crede API via /backend. Is the API running on port 8008?");
         }
       }
     })();
   }, []);
 
   if (error) {
-    const healthHref = (API || "https://api-crede.collab.name.ng") + "/health";
+    const healthHref = (API || "http://localhost:8008") + "/health";
     return (
       <div className="card space-y-3">
         <p className="font-medium text-danger">{error}</p>
@@ -78,64 +63,61 @@ export default function DashboardPage() {
   }
 
   if (!data) {
-    return <p className="text-muted">Loading…</p>;
+    return <p className="text-sm text-muted">Loading dashboard…</p>;
   }
 
-  const { profile } = data;
-
+  const p = data.profile;
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">
-          Hello{profile.full_name ? ", " + profile.full_name.split(" ")[0] : ""}
+        <h1 className="text-3xl font-semibold tracking-tight">
+          Hello{p.full_name ? `, ${p.full_name.split(" ")[0]}` : ""}
         </h1>
-        <p className="mt-1 text-muted">{profile.headline || "Complete your professional profile"}</p>
+        <p className="mt-1 text-muted">{p.headline || "Complete your profile to get started."}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="card">
-          <p className="text-xs uppercase tracking-wide text-muted">Profile</p>
-          <p className="mt-2 text-3xl font-semibold">{profile.profile_completion}%</p>
+          <p className="text-sm text-muted">Profile completion</p>
+          <p className="mt-1 text-2xl font-semibold">{p.profile_completion}%</p>
         </div>
         <div className="card">
-          <p className="text-xs uppercase tracking-wide text-muted">Verification</p>
-          <p className="mt-2 text-3xl font-semibold">{profile.verification_score}/100</p>
+          <p className="text-sm text-muted">Verification score</p>
+          <p className="mt-1 text-2xl font-semibold">{p.verification_score}/100</p>
         </div>
         <div className="card">
-          <p className="text-xs uppercase tracking-wide text-muted">Career entries</p>
-          <p className="mt-2 text-3xl font-semibold">{data.timeline_count}</p>
+          <p className="text-sm text-muted">Career entries</p>
+          <p className="mt-1 text-2xl font-semibold">{data.timeline_count}</p>
         </div>
         <div className="card">
-          <p className="text-xs uppercase tracking-wide text-muted">Generated CVs</p>
-          <p className="mt-2 text-3xl font-semibold">{data.generated_cvs}</p>
+          <p className="text-sm text-muted">Generated CVs</p>
+          <p className="mt-1 text-2xl font-semibold">{data.generated_cvs}</p>
         </div>
       </div>
 
-      <div className="card">
-        <h2 className="font-semibold">Recommended actions</h2>
-        <ul className="mt-4 space-y-2">
-          {data.recommended_actions.length === 0 && (
-            <li className="text-sm text-muted">You are in good shape.</li>
-          )}
-          {data.recommended_actions.map((a) => (
-            <li key={a}>
-              <Link
-                href={
-                  a.includes("CV")
-                    ? "/generate"
-                    : a.includes("Verify")
-                      ? "/verification"
-                      : a.includes("timeline") || a.includes("milestone")
-                        ? "/timeline"
-                        : "/profile"
-                }
-                className="text-sm text-accent hover:underline"
-              >
+      {data.recommended_actions?.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold">Recommended actions</h2>
+          <ul className="space-y-2">
+            {data.recommended_actions.map((a) => (
+              <li key={a} className="card text-sm">
                 {a}
-              </Link>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <div className="flex flex-wrap gap-3">
+        <Link href="/timeline" className="btn-primary">
+          Career Timeline
+        </Link>
+        <Link href="/generate" className="btn-secondary">
+          Generate CV
+        </Link>
+        <Link href="/recruiter/dashboard" className="btn-secondary">
+          Recruiter portal
+        </Link>
       </div>
     </div>
   );

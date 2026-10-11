@@ -21,7 +21,8 @@ class ProfileOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    collab_user_id: int
+    external_id: Optional[str] = None
+    collab_user_id: Optional[str] = None
     email: str
     full_name: Optional[str] = None
     username: Optional[str] = None

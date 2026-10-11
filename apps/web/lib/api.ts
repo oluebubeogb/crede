@@ -1,9 +1,5 @@
-const ACCOUNTS = process.env.NEXT_PUBLIC_ACCOUNTS_URL || "http://localhost:1997";
-
 /**
  * Browser calls same-origin /backend/* (Next.js rewrite → Crede API).
- * Avoids cross-origin CORS issues with api-crede.collab.name.ng.
- * Server-side / build can still use the absolute API URL if needed.
  */
 function apiBase(): string {
   if (typeof window !== "undefined") {
@@ -12,17 +8,19 @@ function apiBase(): string {
   return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8008";
 }
 
-export type CollabUser = {
+export type CredeUser = {
   id: string;
   email: string;
   display_name?: string;
+  role?: string;
+  source?: string;
   products?: string[];
 };
 
-/** Check existing Collab session (shared .collab.name.ng cookies). */
-export async function getAccountsSession(): Promise<CollabUser | null> {
+/** Current session via Crede API /auth/me */
+export async function getSession(): Promise<CredeUser | null> {
   try {
-    const res = await fetch(`${ACCOUNTS}/auth/me`, {
+    const res = await fetch(`${apiBase()}/api/auth/me`, {
       credentials: "include",
       headers: { Accept: "application/json" },
     });
@@ -33,9 +31,9 @@ export async function getAccountsSession(): Promise<CollabUser | null> {
   }
 }
 
-/** Login against Collab Accounts — sets access_token / refresh_token cookies. */
-export async function loginWithCollab(email: string, password: string): Promise<CollabUser> {
-  const res = await fetch(`${ACCOUNTS}/auth/login`, {
+/** Local (or hybrid) login against Crede API */
+export async function login(email: string, password: string): Promise<CredeUser> {
+  const res = await fetch(`${apiBase()}/api/auth/login`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -53,7 +51,31 @@ export async function loginWithCollab(email: string, password: string): Promise<
     throw new Error(msg);
   }
   const data = await res.json();
-  return data.user as CollabUser;
+  return data.user as CredeUser;
+}
+
+/** Local signup */
+export async function signup(email: string, password: string, fullName?: string): Promise<CredeUser> {
+  const res = await fetch(`${apiBase()}/api/auth/signup`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ email, password, full_name: fullName || null }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const detail = err.detail;
+    throw new Error(typeof detail === "string" ? detail : "Signup failed");
+  }
+  const data = await res.json();
+  return data.user as CredeUser;
+}
+
+export async function logout(): Promise<void> {
+  await fetch(`${apiBase()}/api/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -83,4 +105,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const API = typeof window !== "undefined" ? "/backend" : process.env.NEXT_PUBLIC_API_URL || "";
-export { ACCOUNTS };
+
+// Back-compat aliases
+export const getAccountsSession = getSession;
+export const loginWithCollab = login;
+export type CollabUser = CredeUser;

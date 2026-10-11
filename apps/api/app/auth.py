@@ -1,25 +1,104 @@
 """
-SSO via Collab Accounts — same pattern as Collab Teams:
-- Login/signup proxied through this API
-- access_token cookie set on response (COOKIE_DOMAIN=.collab.name.ng)
-- Local Profile keyed by accounts UUID string (collab_user_id)
+Crede auth — dual mode:
+1. Local (default for Phase 2 testing): email + password stored in Crede DB, JWT in access_token cookie.
+2. Collab Accounts SSO (future reintegration): set AUTH_MODE=collab and ACCOUNTS_URL.
+
+AUTH_MODE=local | collab
+When collab is restored, local users can be linked via collab_user_id.
 """
 
 from __future__ import annotations
 
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
 
 import httpx
 from fastapi import Cookie, Depends, Header, HTTPException, Response, status
-from pydantic import BaseModel, EmailStr
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import Profile
+from app.models import Profile, User
 
 settings = get_settings()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_DAYS = 7
+
+
+# ─── Password helpers ───────────────────────────────────────────────────────
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+
+
+# ─── JWT helpers ────────────────────────────────────────────────────────────
+
+def create_access_token(subject: str, extra: Optional[dict] = None) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    payload = {"sub": subject, "exp": expire, "iat": datetime.now(timezone.utc)}
+    if extra:
+        payload.update(extra)
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def decode_token(token: str) -> dict:
+    try:
+        return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+    except JWTError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from e
+
+
+# ─── Cookie helpers ─────────────────────────────────────────────────────────
+
+def set_access_cookie(response: Response, token: str) -> None:
+    kwargs = dict(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        path="/",
+        max_age=60 * 60 * 24 * ACCESS_TOKEN_EXPIRE_DAYS,
+    )
+    if settings.cookie_domain:
+        kwargs["domain"] = settings.cookie_domain
+    response.set_cookie(**kwargs)
+
+
+def clear_access_cookie(response: Response) -> None:
+    kwargs = dict(key="access_token", path="/")
+    if settings.cookie_domain:
+        kwargs["domain"] = settings.cookie_domain
+    response.delete_cookie(**kwargs)
+    kwargs["key"] = "refresh_token"
+    response.delete_cookie(**kwargs)
+
+
+# ─── Request bodies ─────────────────────────────────────────────────────────
+
+class LoginBody(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class SignupBody(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    full_name: Optional[str] = None
+
+
+# ─── Collab (kept for future reintegration) ─────────────────────────────────
 
 class CollabUser:
     def __init__(self, data: dict):
@@ -37,39 +116,9 @@ class CollabUser:
 
     @property
     def has_crede(self) -> bool:
-        # If products list empty, treat as allowed (Accounts may not have backfilled yet)
         if not self.products:
             return True
         return "crede" in self.products
-
-
-class LoginBody(BaseModel):
-    email: EmailStr
-    password: str
-
-
-def set_access_cookie(response: Response, token: str) -> None:
-    kwargs = dict(
-        key="access_token",
-        value=token,
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,
-        path="/",
-        max_age=60 * 60 * 24 * 7,
-    )
-    if settings.cookie_domain:
-        kwargs["domain"] = settings.cookie_domain
-    response.set_cookie(**kwargs)
-
-
-def clear_access_cookie(response: Response) -> None:
-    kwargs = dict(key="access_token", path="/")
-    if settings.cookie_domain:
-        kwargs["domain"] = settings.cookie_domain
-    response.delete_cookie(**kwargs)
-    kwargs["key"] = "refresh_token"
-    response.delete_cookie(**kwargs)
 
 
 async def accounts_login(email: str, password: str) -> tuple[Optional[dict], Optional[str]]:
@@ -107,10 +156,32 @@ async def fetch_collab_user(token: str) -> CollabUser:
         return CollabUser(r.json())
 
 
-async def get_current_collab_user(
+# ─── Unified current user ───────────────────────────────────────────────────
+
+class AuthUser:
+    """Normalized identity used by the rest of the app."""
+
+    def __init__(
+        self,
+        *,
+        id: str,
+        email: str,
+        full_name: Optional[str] = None,
+        source: str = "local",
+        role: str = "professional",
+    ):
+        self.id = id
+        self.email = email
+        self.full_name = full_name
+        self.source = source  # local | collab
+        self.role = role  # professional | recruiter | admin
+
+
+async def get_current_user(
     access_token: Annotated[Optional[str], Cookie()] = None,
     authorization: Annotated[Optional[str], Header()] = None,
-) -> CollabUser:
+    db: Annotated[Session, Depends(get_db)] = None,
+) -> AuthUser:
     token = None
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1].strip()
@@ -118,39 +189,86 @@ async def get_current_collab_user(
         token = access_token
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    user = await fetch_collab_user(token)
-    if not user.has_crede:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Crede access not granted. Open Collab Accounts once or contact support.",
+
+    # Local JWT first
+    if settings.auth_mode == "local" or settings.auth_mode == "hybrid":
+        try:
+            payload = decode_token(token)
+            sub = payload.get("sub")
+            if sub and sub.startswith("local:"):
+                user_id = int(sub.split(":", 1)[1])
+                user = db.query(User).filter(User.id == user_id).first()
+                if not user or not user.is_active:
+                    raise HTTPException(status_code=401, detail="User inactive or not found")
+                return AuthUser(
+                    id=f"local:{user.id}",
+                    email=user.email,
+                    full_name=user.full_name,
+                    source="local",
+                    role=user.role or "professional",
+                )
+        except HTTPException:
+            if settings.auth_mode == "local":
+                raise
+            # hybrid: fall through to collab
+
+    # Collab path
+    if settings.auth_mode in ("collab", "hybrid"):
+        collab = await fetch_collab_user(token)
+        if not collab.has_crede:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Crede access not granted. Open Collab Accounts once or contact support.",
+            )
+        return AuthUser(
+            id=f"collab:{collab.id}",
+            email=collab.email,
+            full_name=collab.full_name,
+            source="collab",
+            role="professional",
         )
-    return user
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
 
 async def get_or_create_profile(
-    collab: Annotated[CollabUser, Depends(get_current_collab_user)],
+    auth: Annotated[AuthUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> Profile:
-    uid = str(collab.id)
-    profile = db.query(Profile).filter(Profile.collab_user_id == uid).first()
+    """Resolve or create Profile. Keyed by external_id (local:N or collab:UUID)."""
+    external_id = auth.id
+    profile = db.query(Profile).filter(Profile.external_id == external_id).first()
     if not profile:
+        # legacy lookup by collab_user_id for existing rows
+        if auth.source == "collab":
+            legacy = db.query(Profile).filter(Profile.collab_user_id == auth.id.replace("collab:", "")).first()
+            if legacy:
+                legacy.external_id = external_id
+                db.commit()
+                db.refresh(legacy)
+                return legacy
         profile = Profile(
-            collab_user_id=uid,
-            email=collab.email,
-            full_name=collab.full_name,
+            external_id=external_id,
+            collab_user_id=auth.id.replace("collab:", "") if auth.source == "collab" else None,
+            email=auth.email,
+            full_name=auth.full_name,
         )
         db.add(profile)
         db.commit()
         db.refresh(profile)
     else:
         changed = False
-        if collab.email and profile.email != collab.email:
-            profile.email = collab.email
+        if auth.email and profile.email != auth.email:
+            profile.email = auth.email
             changed = True
-        if collab.full_name and not profile.full_name:
-            profile.full_name = collab.full_name
+        if auth.full_name and not profile.full_name:
+            profile.full_name = auth.full_name
             changed = True
         if changed:
             db.commit()
             db.refresh(profile)
     return profile
+
+
+# Back-compat alias used by existing routers
+get_current_collab_user = get_current_user

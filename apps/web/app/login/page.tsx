@@ -3,24 +3,25 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
-import { getAccountsSession, loginWithCollab } from "@/lib/api";
+import { getSession, login, signup } from "@/lib/api";
 
 function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
   const next = search.get("next") || "/dashboard";
 
+  const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  // Already logged in on Collab suite? Skip the form.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const user = await getAccountsSession();
+      const user = await getSession();
       if (cancelled) return;
       if (user) {
         router.replace(next);
@@ -38,10 +39,14 @@ function LoginForm() {
     setError(null);
     setLoading(true);
     try {
-      await loginWithCollab(email.trim(), password);
+      if (mode === "signup") {
+        await signup(email.trim(), password, fullName.trim() || undefined);
+      } else {
+        await login(email.trim(), password);
+      }
       router.replace(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Authentication failed");
       setLoading(false);
     }
   }
@@ -49,7 +54,7 @@ function LoginForm() {
   if (checking) {
     return (
       <div className="card w-full max-w-md text-center">
-        <p className="text-sm text-muted">Checking Collab session…</p>
+        <p className="text-sm text-muted">Checking session…</p>
       </div>
     );
   }
@@ -59,12 +64,58 @@ function LoginForm() {
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-btn bg-accent text-lg font-bold text-white">
         C
       </div>
-      <h1 className="mt-6 text-center text-2xl font-semibold">Welcome back</h1>
+      <h1 className="mt-6 text-center text-2xl font-semibold">
+        {mode === "login" ? "Welcome back" : "Create your account"}
+      </h1>
       <p className="mt-2 text-center text-sm text-muted">
-        Sign in with your Collab Account — same login as Editor, Project, Teams & Meet.
+        {mode === "login"
+          ? "Sign in to your Crede professional identity."
+          : "Build your verified career timeline in minutes."}
       </p>
 
-      <form onSubmit={onSubmit} className="mt-8 space-y-4">
+      <div className="mt-6 flex rounded-btn border border-border p-1">
+        <button
+          type="button"
+          className={`flex-1 rounded-btn py-2 text-sm font-medium transition ${
+            mode === "login" ? "bg-accent text-white" : "text-muted"
+          }`}
+          onClick={() => {
+            setMode("login");
+            setError(null);
+          }}
+        >
+          Sign in
+        </button>
+        <button
+          type="button"
+          className={`flex-1 rounded-btn py-2 text-sm font-medium transition ${
+            mode === "signup" ? "bg-accent text-white" : "text-muted"
+          }`}
+          onClick={() => {
+            setMode("signup");
+            setError(null);
+          }}
+        >
+          Sign up
+        </button>
+      </div>
+
+      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        {mode === "signup" && (
+          <div>
+            <label className="label" htmlFor="fullName">
+              Full name
+            </label>
+            <input
+              id="fullName"
+              type="text"
+              className="input"
+              autoComplete="name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+            />
+          </div>
+        )}
         <div>
           <label className="label" htmlFor="email">
             Email
@@ -87,20 +138,29 @@ function LoginForm() {
             id="password"
             type="password"
             className="input"
-            autoComplete="current-password"
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
             required
+            minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          {mode === "signup" && (
+            <p className="mt-1 text-xs text-muted">At least 8 characters</p>
+          )}
         </div>
         {error && <p className="text-sm text-danger">{error}</p>}
         <button type="submit" className="btn-primary w-full" disabled={loading}>
-          {loading ? "Signing in…" : "Continue with Collab Account"}
+          {loading
+            ? mode === "signup"
+              ? "Creating account…"
+              : "Signing in…"
+            : mode === "signup"
+              ? "Create account"
+              : "Sign in"}
         </button>
       </form>
 
       <p className="mt-6 text-center text-xs text-muted">
-        No separate Crede signup.{" "}
         <Link href="/" className="text-accent hover:underline">
           Back to home
         </Link>

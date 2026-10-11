@@ -14,11 +14,14 @@ import {
   Settings,
   Moon,
   Sun,
+  Building2,
+  Search,
+  LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
-const nav = [
+const professionalNav = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/timeline", label: "Career Timeline", icon: GitBranch },
   { href: "/skills", label: "Skills", icon: Sparkles },
@@ -31,13 +34,21 @@ const nav = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+const recruiterNav = [
+  { href: "/recruiter/dashboard", label: "Recruiter", icon: LayoutDashboard },
+  { href: "/recruiter/candidates", label: "Candidates", icon: Search },
+  { href: "/recruiter/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/recruiter/organizations", label: "Organizations", icon: Building2 },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("crede-theme");
-    const preferDark = stored === "dark" || (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    const preferDark =
+      stored === "dark" || (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches);
     setDark(preferDark);
     document.documentElement.classList.toggle("dark", preferDark);
   }, []);
@@ -49,6 +60,8 @@ export function Sidebar() {
     localStorage.setItem("crede-theme", next ? "dark" : "light");
   }
 
+  const isRecruiter = pathname.startsWith("/recruiter");
+
   return (
     <aside className="fixed inset-y-0 left-0 z-40 flex w-sidebar flex-col border-r border-border bg-surface">
       <div className="flex h-16 items-center gap-2 border-b border-border px-5">
@@ -58,7 +71,8 @@ export function Sidebar() {
         <span className="text-lg font-semibold tracking-tight">Crede</span>
       </div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
-        {nav.map((item) => {
+        <p className="mb-1 px-3 text-xs font-medium uppercase tracking-wider text-muted">Professional</p>
+        {professionalNav.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
           return (
@@ -67,7 +81,25 @@ export function Sidebar() {
               href={item.href}
               className={cn(
                 "flex items-center gap-3 rounded-btn px-3 py-2.5 text-sm transition",
-                active
+                active ? "font-medium text-accent" : "text-muted nav-hover"
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {item.label}
+            </Link>
+          );
+        })}
+        <p className="mb-1 mt-4 px-3 text-xs font-medium uppercase tracking-wider text-muted">Recruiting</p>
+        {recruiterNav.map((item) => {
+          const active = pathname === item.href || pathname.startsWith(item.href + "/");
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 rounded-btn px-3 py-2.5 text-sm transition",
+                active || (isRecruiter && item.href === "/recruiter/dashboard" && pathname === "/recruiter")
                   ? "font-medium text-accent"
                   : "text-muted nav-hover"
               )}

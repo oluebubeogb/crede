@@ -8,12 +8,15 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://crede:crede@localhost:5434/crede"
     secret_key: str = "dev-secret"
+    # local | collab | hybrid — local for Phase 2 testing; switch to collab later
+    auth_mode: str = "local"
     accounts_url: str = "http://localhost:1997"
     accounts_public_url: str = "https://accounts.collab.name.ng"
-    cookie_domain: str = ".collab.name.ng"
-    cookie_secure: bool = True
+    # Empty for pure local dev (no shared .collab.name.ng cookie)
+    cookie_domain: str = ""
+    cookie_secure: bool = False
     cookie_samesite: str = "lax"
-    cors_origins: str = "https://crede.collab.name.ng,http://localhost:3001"
+    cors_origins: str = "https://crede.collab.name.ng,http://localhost:3001,http://localhost:3000"
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
