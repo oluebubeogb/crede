@@ -107,6 +107,12 @@ class CollabUser:
         self.full_name: Optional[str] = (
             data.get("display_name") or data.get("full_name") or data.get("name")
         )
+        self.username: Optional[str] = data.get("username")
+        self.phone: Optional[str] = data.get("phone")
+        self.country: Optional[str] = data.get("country")
+        self.school: Optional[str] = data.get("school")
+        self.bio: Optional[str] = data.get("bio") or None
+        self.avatar_url: Optional[str] = data.get("avatar_url")
         raw_products = data.get("products") or data.get("product_access") or []
         self.products: list[str] = [
             (p.get("product") if isinstance(p, dict) else str(p)).lower()
@@ -169,12 +175,24 @@ class AuthUser:
         full_name: Optional[str] = None,
         source: str = "local",
         role: str = "professional",
+        username: Optional[str] = None,
+        phone: Optional[str] = None,
+        country: Optional[str] = None,
+        school: Optional[str] = None,
+        bio: Optional[str] = None,
+        avatar_url: Optional[str] = None,
     ):
         self.id = id
         self.email = email
         self.full_name = full_name
         self.source = source  # local | collab
         self.role = role  # professional | recruiter | admin
+        self.username = username
+        self.phone = phone
+        self.country = country
+        self.school = school
+        self.bio = bio
+        self.avatar_url = avatar_url
 
 
 async def get_current_user(
@@ -226,6 +244,12 @@ async def get_current_user(
             full_name=collab.full_name,
             source="collab",
             role="professional",
+            username=collab.username,
+            phone=collab.phone,
+            country=collab.country,
+            school=collab.school,
+            bio=collab.bio,
+            avatar_url=collab.avatar_url,
         )
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
@@ -291,11 +315,23 @@ async def get_or_create_profile(
             return profile
 
         try:
+            # Prefill from Collab Accounts when available (username, phone, country, bio)
+            username = getattr(auth, "username", None)
+            if username:
+                taken = db.query(Profile).filter(Profile.username == username).first()
+                if taken:
+                    username = None
             profile = Profile(
                 external_id=external_id,
                 collab_user_id=auth.id.replace("collab:", "") if auth.source == "collab" else None,
                 email=auth.email,
                 full_name=auth.full_name,
+                username=username,
+                phone=getattr(auth, "phone", None),
+                country=getattr(auth, "country", None),
+                summary=(getattr(auth, "bio", None) or None),
+                avatar_url=getattr(auth, "avatar_url", None),
+                location=getattr(auth, "country", None),
             )
             db.add(profile)
             db.commit()
@@ -313,6 +349,26 @@ async def get_or_create_profile(
             changed = True
         if auth.full_name and not profile.full_name:
             profile.full_name = auth.full_name
+            changed = True
+        # Prefill blanks from Collab without overwriting user edits
+        if getattr(auth, "username", None) and not profile.username:
+            taken = db.query(Profile).filter(Profile.username == auth.username).first()
+            if not taken:
+                profile.username = auth.username
+                changed = True
+        if getattr(auth, "phone", None) and not getattr(profile, "phone", None):
+            profile.phone = auth.phone
+            changed = True
+        if getattr(auth, "country", None) and not getattr(profile, "country", None):
+            profile.country = auth.country
+            if not profile.location:
+                profile.location = auth.country
+            changed = True
+        if getattr(auth, "bio", None) and not profile.summary:
+            profile.summary = auth.bio
+            changed = True
+        if getattr(auth, "avatar_url", None) and not profile.avatar_url:
+            profile.avatar_url = auth.avatar_url
             changed = True
         if changed:
             try:

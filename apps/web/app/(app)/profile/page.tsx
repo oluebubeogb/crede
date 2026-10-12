@@ -9,11 +9,32 @@ type Profile = {
   headline?: string;
   industry?: string;
   location?: string;
+  country?: string;
+  phone?: string;
+  phone_country_code?: string;
   years_experience?: number;
   summary?: string;
   verification_score: number;
   profile_completion: number;
 };
+
+/** Common dial codes — default NG (+234) for Crede Africa focus */
+const COUNTRY_CODES = [
+  { code: "+234", label: "NG +234" },
+  { code: "+233", label: "GH +233" },
+  { code: "+254", label: "KE +254" },
+  { code: "+27", label: "ZA +27" },
+  { code: "+1", label: "US/CA +1" },
+  { code: "+44", label: "UK +44" },
+  { code: "+91", label: "IN +91" },
+  { code: "+971", label: "AE +971" },
+  { code: "+49", label: "DE +49" },
+  { code: "+33", label: "FR +33" },
+];
+
+function normalizeLocalPhone(raw: string): string {
+  return raw.replace(/[^\d]/g, "").replace(/^0+/, "");
+}
 
 export default function ProfilePage() {
   const [p, setP] = useState<Profile | null>(null);
@@ -21,27 +42,44 @@ export default function ProfilePage() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    api<Profile>("/api/profile/me").then((data) => {
-      setP(data);
-      setForm(data);
-    }).catch(console.error);
+    api
+      .get<Profile>("/profile/me")
+      .then((data) => {
+        setP(data);
+        setForm({
+          ...data,
+          phone_country_code: data.phone_country_code || "+234",
+        });
+      })
+      .catch(console.error);
   }, []);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const updated = await api<Profile>("/api/profile/me", {
-      method: "PATCH",
-      body: JSON.stringify({
-        full_name: form.full_name,
-        username: form.username,
-        headline: form.headline,
-        industry: form.industry,
-        location: form.location,
-        years_experience: form.years_experience ? Number(form.years_experience) : null,
-        summary: form.summary,
-      }),
+    const local = form.phone ? normalizeLocalPhone(String(form.phone)) : "";
+    const dial = form.phone_country_code || "+234";
+    const e164 = local ? `${dial}${local}` : null;
+    const updated = await api.patch<Profile>("/profile/me", {
+      full_name: form.full_name,
+      username: form.username,
+      headline: form.headline,
+      industry: form.industry,
+      location: form.location,
+      country: form.country,
+      phone: e164,
+      phone_country_code: dial,
+      years_experience: form.years_experience ? Number(form.years_experience) : null,
+      summary: form.summary,
     });
     setP(updated);
+    setForm({
+      ...updated,
+      phone_country_code: updated.phone_country_code || dial,
+      // show national part in the input when possible
+      phone: updated.phone?.startsWith(dial)
+        ? updated.phone.slice(dial.length)
+        : updated.phone || "",
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -64,6 +102,7 @@ export default function ProfilePage() {
             ["headline", "Headline"],
             ["industry", "Industry"],
             ["location", "Location"],
+            ["country", "Country"],
           ] as const
         ).map(([key, label]) => (
           <div key={key}>
@@ -75,6 +114,36 @@ export default function ProfilePage() {
             />
           </div>
         ))}
+
+        <div>
+          <label className="label">Mobile number</label>
+          <div className="flex gap-2">
+            <select
+              className="input w-[140px] shrink-0"
+              value={form.phone_country_code || "+234"}
+              onChange={(e) => setForm({ ...form, phone_country_code: e.target.value })}
+            >
+              {COUNTRY_CODES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            <input
+              className="input flex-1"
+              inputMode="tel"
+              placeholder="8012345678"
+              value={form.phone ?? ""}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            />
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Stored as{" "}
+            {(form.phone_country_code || "+234") +
+              (form.phone ? normalizeLocalPhone(String(form.phone)) : "…")}
+          </p>
+        </div>
+
         <div>
           <label className="label">Years of experience</label>
           <input

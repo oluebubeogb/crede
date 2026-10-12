@@ -84,6 +84,9 @@ class Profile(Base):
     headline: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     industry: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    phone_country_code: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)  # e.g. +234
     years_experience: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -91,6 +94,7 @@ class Profile(Base):
     profile_completion: Mapped[int] = mapped_column(Integer, default=0)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)
+    preferences: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # settings tabs
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

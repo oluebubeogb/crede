@@ -12,9 +12,13 @@ class ProfileUpdate(BaseModel):
     headline: Optional[str] = None
     industry: Optional[str] = None
     location: Optional[str] = None
+    country: Optional[str] = None
+    phone: Optional[str] = None
+    phone_country_code: Optional[str] = None
     years_experience: Optional[int] = None
     summary: Optional[str] = None
     is_public: Optional[bool] = None
+    preferences: Optional[dict] = None
 
 
 class ProfileOut(BaseModel):
@@ -29,12 +33,16 @@ class ProfileOut(BaseModel):
     headline: Optional[str] = None
     industry: Optional[str] = None
     location: Optional[str] = None
+    country: Optional[str] = None
+    phone: Optional[str] = None
+    phone_country_code: Optional[str] = None
     years_experience: Optional[int] = None
     summary: Optional[str] = None
     onboarding_completed: bool
     verification_score: int
     profile_completion: int
     is_public: bool
+    preferences: Optional[dict] = None
     created_at: datetime
 
 

@@ -81,6 +81,22 @@ def _try_schema() -> bool:
                         "ON profiles (external_id)"
                     )
                 )
+            # Phase 2 profile extras (phone / country / preferences)
+            for col, ddl in [
+                ("country", "ALTER TABLE profiles ADD COLUMN country VARCHAR(80)"),
+                ("phone", "ALTER TABLE profiles ADD COLUMN phone VARCHAR(32)"),
+                ("phone_country_code", "ALTER TABLE profiles ADD COLUMN phone_country_code VARCHAR(8)"),
+                ("preferences", "ALTER TABLE profiles ADD COLUMN preferences JSONB"),
+            ]:
+                has = conn.execute(
+                    text(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_schema='public' AND table_name='profiles' AND column_name=:c"
+                    ),
+                    {"c": col},
+                ).fetchone()
+                if not has:
+                    conn.execute(text(ddl))
         _schema_ready = True
         _db_last_error = None
         logger.info("Database schema ready")

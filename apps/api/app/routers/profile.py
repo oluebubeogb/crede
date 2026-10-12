@@ -24,12 +24,16 @@ def _profile_out(profile: Profile) -> ProfileOut:
         headline=profile.headline,
         industry=profile.industry,
         location=profile.location,
+        country=getattr(profile, "country", None),
+        phone=getattr(profile, "phone", None),
+        phone_country_code=getattr(profile, "phone_country_code", None),
         years_experience=profile.years_experience,
         summary=profile.summary,
         onboarding_completed=bool(profile.onboarding_completed),
         verification_score=int(profile.verification_score or 0),
         profile_completion=int(profile.profile_completion or 0),
         is_public=bool(profile.is_public if profile.is_public is not None else True),
+        preferences=getattr(profile, "preferences", None),
         created_at=profile.created_at,
     )
 
@@ -54,6 +58,13 @@ def update_me(
         )
         if exists:
             raise HTTPException(400, "Username taken")
+    # Merge preferences JSON instead of clobbering
+    if "preferences" in data and data["preferences"] is not None:
+        existing = getattr(profile, "preferences", None) or {}
+        if not isinstance(existing, dict):
+            existing = {}
+        incoming = data.pop("preferences") or {}
+        profile.preferences = {**existing, **incoming}
     for k, v in data.items():
         setattr(profile, k, v)
     db.commit()
