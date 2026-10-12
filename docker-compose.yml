@@ -1,4 +1,8 @@
-# Crede Phase 2 — API + Redis + Meilisearch (Postgres usually managed externally)
+# Crede Phase 2 — API + Redis + Meilisearch
+# Postgres is usually managed externally (Coolify resource / DATABASE_URL).
+# Redis and Meilisearch are internal-only (no host port publish) to avoid
+# conflicts with other services already bound to 6379 / 7700.
+
 services:
   api:
     build: ./apps/api
@@ -27,14 +31,12 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # Internal only — do not publish 6379 on the host
     restart: unless-stopped
 
   meilisearch:
     image: getmeili/meilisearch:v1.11
-    ports:
-      - "7700:7700"
+    # Internal only — do not publish 7700 on the host
     environment:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-crede_meili_master}
       MEILI_ENV: development
