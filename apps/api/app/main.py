@@ -18,7 +18,9 @@ from app.routers import (
     organizations,
     jobs,
     candidates,
+    opportunities,
 )
+from app.services.storage import ensure_dirs
 
 settings = get_settings()
 
@@ -27,7 +29,6 @@ def _ensure_schema() -> None:
     """create_all + light migrations for Phase 2 columns."""
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
-        # profiles.collab_user_id may still be integer from early Phase 1
         row = conn.execute(
             text(
                 """
@@ -59,6 +60,7 @@ def _ensure_schema() -> None:
         ).fetchone()
         if not exists:
             conn.execute(text("ALTER TABLE profiles ADD COLUMN external_id VARCHAR(80)"))
+            
             conn.execute(
                 text("CREATE UNIQUE INDEX IF NOT EXISTS ix_profiles_external_id ON profiles (external_id)")
             )
@@ -67,13 +69,17 @@ def _ensure_schema() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _ensure_schema()
+    try:
+        ensure_dirs()
+    except Exception:
+        pass
     yield
 
 
 app = FastAPI(
     title="Crede API",
-    description="Verified professional identity — Phase 1 + Phase 2. Auth: local (default) or Collab SSO.",
-    version="2.0.1",
+    description="Verified professional identity — Phase 1 + Phase 2 complete. VPS storage, real CV files, opportunities.",
+    version="2.1.0",
     lifespan=lifespan,
 )
 
@@ -95,11 +101,11 @@ app.include_router(documents.router, prefix="/api")
 app.include_router(organizations.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(candidates.router, prefix="/api")
+app.include_router(opportunities.router, prefix="/api")
 
 
 @app.exception_handler(Exception)
 async def unhandled_exception(request: Request, exc: Exception):
-    """Surface real errors during Phase 2 rollout (avoid opaque 500)."""
     return JSONResponse(
         status_code=500,
         content={"detail": f"{type(exc).__name__}: {exc}"},
@@ -113,4 +119,5 @@ def health():
         "service": "crede-api",
         "phase": 2,
         "auth_mode": settings.auth_mode,
+        "storage": "vps",
     }

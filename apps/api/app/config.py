@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
 
+    # VPS local disk storage (NOT MinIO)
+    storage_root: str = "/data/crede"
+
+    # Legacy S3/MinIO keys kept for env compatibility but unused
     s3_endpoint: str = ""
     s3_access_key: str = ""
     s3_secret_key: str = ""
@@ -28,6 +32,8 @@ class Settings(BaseSettings):
     s3_region: str = "us-east-1"
 
     redis_url: str = "redis://localhost:6379/0"
+    meili_url: str = "http://localhost:7700"
+    meili_master_key: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

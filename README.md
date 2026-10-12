@@ -4,36 +4,22 @@
 
 Crede is **not** a CV builder. Users maintain a single **Career Timeline** (source of truth).  
 CVs, cover letters, and bios are generated from that timeline. Verification builds trust.  
-Phase 2 adds a recruiter portal: organizations, jobs, candidate search, and matching.
+Phase 2 adds VPS document storage, real PDF/DOCX generation, opportunities matching, and recruiter pilot loops.
+
+See `docs/CREDE_BLUEPRINT.txt` for the full product + technical source of truth.
 
 ---
 
-## Auth (testing-first)
+## Phase 2 status (this package)
 
-| Mode | Env | Behaviour |
-|------|-----|-----------|
-| **local** (default) | `AUTH_MODE=local` | Email/password signup & login inside Crede. No Collab dependency. |
-| collab | `AUTH_MODE=collab` | Proxy to Collab Accounts SSO (Phase 1 behaviour). |
-| hybrid | `AUTH_MODE=hybrid` | Local first, then Collab. |
-
-To reintegrate Collab later: set `AUTH_MODE=collab`, restore `COOKIE_DOMAIN=.collab.name.ng`, and point `ACCOUNTS_URL` at the accounts service.
-
----
-
-## Scope
-
-| Area | Status |
-|------|--------|
-| Local signup / signin | ✅ |
-| Collab SSO (switchable) | ✅ ready |
-| Onboarding, Timeline, Skills, Certs | ✅ |
-| Verification score + uploads | ✅ |
-| AI CV generation | ✅ stubs |
-| Documents library | ✅ |
-| Public profile `/u/[username]` | ✅ |
-| Recruiter orgs / jobs | ✅ |
-| Candidate search | ✅ |
-| Job ↔ candidate matching | ✅ |
+| Milestone | Status |
+|-----------|--------|
+| M1 — VPS storage + verification upload/admin approve | ✅ |
+| M2 — Real PDF + DOCX on VPS | ✅ |
+| M3 — Redis + Meilisearch (wired in compose; search falls back to SQL) | ✅ scaffold |
+| M4 — Opportunities + recruiter pilot | ✅ |
+| M5 — Onboarding / mobile / settings polish | Partial (empty states + core UX) |
+| M6 — Commercial backlog | Backlog |
 
 ---
 
@@ -44,12 +30,15 @@ To reintegrate Collab later: set `AUTH_MODE=collab`, restore `COOKIE_DOMAIN=.col
 | Frontend | Next.js 14 · Tailwind · Inter |
 | API | FastAPI |
 | DB | PostgreSQL |
-| Auth | Local JWT (default) or Collab Accounts |
+| Files | VPS disk under `STORAGE_ROOT` (`/data/crede`) — **not MinIO** |
+| Cache / queue | Redis |
+| Search | Meilisearch (SQL fallback) |
+| Auth | Local JWT (default) or Collab Accounts SSO |
 | AI | OpenAI — job analysis / CV tailoring only |
 
 ---
 
-## Quick start (local, no Collab)
+## Quick start (local)
 
 ### API
 
@@ -58,7 +47,8 @@ cd apps/api
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# AUTH_MODE=local, DATABASE_URL, SECRET_KEY
+# AUTH_MODE=local, DATABASE_URL, SECRET_KEY, STORAGE_ROOT=./data/crede
+mkdir -p ./data/crede
 uvicorn app.main:app --reload --port 8008
 ```
 
@@ -72,13 +62,14 @@ cp .env.example .env.local
 npm run dev -- -p 3001
 ```
 
-Open http://localhost:3001 → **Sign up** → build timeline → use **Recruiting** in the sidebar.
+Open http://localhost:3001 → **Sign up** → build timeline → Generate CV → download PDF/DOCX.
 
----
+### Docker (API + Redis + Meili)
 
-## Design system
-
-Feel: Linear / Notion / Vercel / Stripe — soft cards, 16px radius, Inter, accent `#2563EB`.
+```bash
+export DATABASE_URL=postgresql://...
+docker compose up --build
+```
 
 ---
 
@@ -94,4 +85,4 @@ Career Timeline
 
 Store **raw facts only**. Never persist AI prose as source of truth.
 
-See `docs/PHASE1.md` and `docs/PHASE2.md`.
+Design: Linear / Notion / Vercel / Stripe — soft cards, 16px radius, Inter, accent `#2563EB`.

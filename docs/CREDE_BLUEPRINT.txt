@@ -1,0 +1,521 @@
+================================================================================
+CREDE — MASTER BLUEPRINT (HANDOFF DOCUMENT)
+Version: 2.0
+Date: 2026-10-12
+Status: Phase 1 ACHIEVED · Phase 2 PENDING
+================================================================================
+
+PURPOSE OF THIS DOCUMENT
+------------------------
+Hand this file to any engineer or AI session. It is the single source of truth
+for product intent, locked technical decisions, what is already built (Phase 1),
+and what must be built next (Phase 2).
+
+Do NOT re-litigate stack choices unless the owner explicitly asks.
+Do NOT reintroduce MinIO as the primary storage plan.
+Do NOT migrate to Laravel unless the owner explicitly asks.
+
+
+================================================================================
+1. PRODUCT IDENTITY
+================================================================================
+
+Name:        Crede
+Domains:     crede.collab.name.ng (web)
+             api-crede.collab.name.ng (API)
+             accounts.collab.name.ng (identity / SSO)
+
+Mission:
+  Build the most trusted professional identity and talent discovery platform
+  in Africa, starting with verified career timelines and AI-assisted CV
+  generation.
+
+Positioning:
+  Crede is NOT a CV builder.
+  Crede is a verified professional identity platform.
+  Users maintain a Career Timeline once. That timeline is the source of truth
+  for CVs, public profiles, recruiter search, and job matching.
+
+Core principle:
+  Store RAW FACTS only in the timeline.
+  Never persist AI-generated prose as canonical career data.
+  AI is used only for: job description analysis, skill extraction,
+  CV tailoring from structured data, opportunity matching assists.
+
+Core object graph:
+  Career Timeline
+    → Verification
+    → CV Generation
+    → Public Profile
+    → Recruiter Search
+    → Job Matching
+
+Feel / design references (target aesthetic):
+  LIKE:    ChatGPT Premium, Linear, Raycast, Notion, Vercel, Stripe Dashboard
+  NOT LIKE: Canva, Resume.io, LinkedIn, traditional job boards
+
+Design system:
+  Font: Inter (fallback system-ui)
+  Light: bg #FFFFFF, surface #F8FAFC, border #E2E8F0,
+         text #0F172A, muted #64748B, accent #2563EB,
+         success #10B981, warning #F59E0B, danger #EF4444
+  Dark:  bg #09090B, surface #18181B, border #27272A,
+         text #FAFAFA, muted #A1A1AA, accent #3B82F6
+  Layout: sidebar 280px, content max 1200px
+  Cards: 16px radius, soft borders, no heavy shadows
+  Buttons: height 44px, radius 12px
+
+
+================================================================================
+2. LOCKED TECHNICAL DECISIONS
+================================================================================
+
+Frontend:     Next.js 14 (App Router) + Tailwind CSS
+Backend:      FastAPI (Python) — STAY ON FASTAPI
+Database:     PostgreSQL
+Auth:         Collab Accounts SSO (AUTH_MODE=collab in production)
+              Local email/password remains supported for testing (AUTH_MODE=local|hybrid)
+Files:        VPS local disk storage (NOT MinIO — MinIO caused operational pain)
+Cache/Queue:  Redis (to be fully wired in Phase 2)
+Search:       Meilisearch (to be fully wired in Phase 2)
+AI:           OpenAI API — job analysis / tailoring only; optional if key missing
+Admin:        FastAPI + simple admin UI (or Next admin routes) — not Laravel/Filament
+Deploy:       Coolify / Docker
+              Web proxies API via Next rewrite: /backend/* → API
+              Do NOT set a broken API_PROXY_TARGET; working default is public API URL
+              baked at build, or internal http://<api-service>:8008 if verified
+
+VPS storage layout (target):
+  /data/crede/
+    verifications/{profile_id}/{kind}/...
+    certifications/{profile_id}/...
+    generated/{profile_id}/{doc_id}.pdf
+    generated/{profile_id}/{doc_id}.docx
+  DB stores relative paths/keys; downloads only via authenticated API routes.
+
+Monorepo layout:
+  crede-main/
+    apps/api/     FastAPI
+    apps/web/     Next.js
+    docs/
+    docker-compose.yml
+    README.md
+
+
+================================================================================
+3. DOMAIN MODEL (ALREADY IN CODE)
+================================================================================
+
+User                  Local auth accounts (optional when AUTH_MODE=local)
+Profile               One per identity (external_id = "local:N" or "collab:UUID")
+TimelineEntry         Career facts — SOURCE OF TRUTH
+Skill                 Technical / leadership / industry
+Certification         Name, issuer, dates, verification_status
+VerificationItem      email|phone|degree|certification|employment|organization
+GeneratedDocument     cv|cover_letter|bio snapshots + storage keys
+Organization          Employer company
+OrganizationMember    owner|admin|recruiter
+Job                   Posted roles
+JobMatch              Scores between job and profile
+SavedCandidate        Recruiter shortlist (model exists; UI incomplete)
+
+Verification score points (max 100):
+  email 10, phone 10, certification/degree 20, employment 30, organization 30
+
+
+================================================================================
+4. PHASE 1 — ACHIEVED (DO NOT REBUILD FROM SCRATCH)
+================================================================================
+
+Treat everything below as DONE unless a specific bug is reported.
+
+4.1 Infrastructure & auth
+  [x] FastAPI app with health: GET /health → phase 2, auth_mode
+  [x] Next.js app with design tokens, AppShell, Sidebar
+  [x] Postgres models + create_all / light migrations (external_id, etc.)
+  [x] Collab Accounts SSO path (AUTH_MODE=collab)
+  [x] Local signup/login JWT path (AUTH_MODE=local) for testing
+  [x] Hybrid mode support in code
+  [x] Cookie session via access_token
+  [x] Same-origin /backend proxy (Next rewrites)
+  [x] CORS + cookie config for *.collab.name.ng
+  [x] Profile resolve: get_or_create_profile keyed by external_id
+  [x] Dashboard and profile endpoints no longer 500 after schema/auth fix
+
+4.2 Marketing / entry
+  [x] Landing page / — hero, feature grid, pricing shell, footer links
+  [x] Login page /login — works with Collab (and local when enabled)
+  [x] For-recruiters landing /for-recruiters
+
+4.3 Professional app shell
+  [x] Desktop layout: Sidebar + content
+  [x] Sidebar nav: Home, Timeline, Skills, Certifications, Verification,
+      Documents, Generate CV, Opportunities, Profile, Settings
+  [x] Dark mode toggle
+  [x] Recruiter section links in sidebar (Phase 2 routes exist)
+
+4.4 Dashboard /dashboard
+  [x] Greeting from profile name
+  [x] Profile completion %
+  [x] Verification score
+  [x] Counts: career entries, generated CVs
+  [x] Recommended actions list
+  [x] Links into timeline / generate / recruiter
+
+4.5 Career Timeline /timeline
+  [x] List entries ordered by date
+  [x] Add entry (job title, org, dates, description, achievements, etc.)
+  [x] Edit / delete
+  [x] Entry detail interaction (drawer-style UX in UI)
+  [x] Stored as raw facts in timeline_entries
+
+4.6 Skills /skills
+  [x] Add / list skills
+  [x] Categories (technical / leadership / industry)
+  [x] Proficiency + verified flag fields in model
+
+4.7 Certifications /certifications
+  [x] CRUD-style certification records
+  [x] Verification status field on model
+
+4.8 Verification /verification
+  [x] Trust kinds: email, phone, degree, certification, employment, organization
+  [x] Skeleton rows created per profile
+  [x] Submit endpoint pattern
+  [x] Score recomputation helpers (completion.py)
+  [ ] Full VPS upload + admin approve is Phase 2 (see below)
+
+4.9 Documents & CV generation
+  [x] Documents list API + basic UI
+  [x] POST /api/generate — job description in, matching insights out
+  [x] Deterministic match against timeline/skills when possible
+  [x] OpenAI path when OPENAI_API_KEY set; heuristic fallback otherwise
+  [x] GeneratedDocument model with content_snapshot
+  [ ] Production-grade PDF/DOCX on VPS disk is Phase 2
+
+4.10 Profile
+  [x] /profile — professional overview renders
+  [x] /u/[username] — public profile route
+  [x] PATCH profile fields (headline, industry, location, summary, etc.)
+  [x] Profile completion scoring
+
+4.11 Settings
+  [x] Basic settings page + sign out
+  [ ] Full tabbed settings is Phase 2 polish
+
+4.12 Phase 2 scaffold already present (minimal, not complete)
+  [x] Organization create / list mine (API + basic UI)
+  [x] Job create / list by org (API + basic UI)
+  [x] Candidate search SQL filters (API + basic UI)
+  [x] Job match scoring deterministic (API + matches page)
+  [x] Recruiter dashboard / candidates / jobs / organizations routes
+
+IMPORTANT:
+  Phase 1 “achieved” means the product path works for identity + timeline +
+  basic generate + basic recruiter scaffold. It does NOT mean every blueprint
+  pixel or every admin workflow is finished.
+
+
+================================================================================
+5. PHASE 2 — PENDING (BUILD THIS NEXT)
+================================================================================
+
+Phase 2 is everything required to make Crede production-trustworthy for
+verification documents, real CV files, search, queues, opportunities, and
+recruiter pilot use — plus UX gaps left from the original full blueprint.
+
+Work in the order of milestones below unless the owner reprioritizes.
+
+
+--------------------------------------------------------------------------------
+MILESTONE M1 — VPS STORAGE + VERIFICATION TRUST
+--------------------------------------------------------------------------------
+Goal: Documents and verification proofs live on VPS disk; admins can approve.
+
+Backend:
+  [ ] Storage service module: save/read/delete files under /data/crede/...
+  [ ] Env: STORAGE_ROOT=/data/crede (or similar)
+  [ ] Verification upload endpoint writes to VPS; stores relative path on
+      VerificationItem.document_key
+  [ ] Certification document upload to VPS
+  [ ] Auth-checked download routes (no public directory listing)
+  [ ] Admin endpoints (or protected routes):
+        list pending verifications
+        approve → set status=approved, points, bump verification_score
+        reject → status=rejected, notes
+  [ ] Ensure refresh_scores runs after approve/reject
+
+Frontend:
+  [ ] Verification page: upload control per kind, status, view/download own doc
+  [ ] Large circular verification meter UI (score / 100)
+  [ ] Simple admin UI page(s) for review queue (Next route guarded by admin role)
+  [ ] Empty state: "Increase trust by verifying your credentials."
+
+Acceptance:
+  - User uploads employment letter → file on disk → admin approves → score up
+  - User can re-download their own uploaded file when authenticated
+
+
+--------------------------------------------------------------------------------
+MILESTONE M2 — REAL CV / DOCUMENT OUTPUTS
+--------------------------------------------------------------------------------
+Goal: Generate produces real PDF and DOCX on VPS; documents library is usable.
+
+Backend:
+  [ ] Template fill → write PDF (reportlab or equivalent) to VPS
+  [ ] Template fill → write DOCX (python-docx) to VPS
+  [ ] Templates: at least professional + one of modern|executive|minimal
+  [ ] Store storage_key_pdf / storage_key_docx on GeneratedDocument
+  [ ] Download endpoints for PDF and DOCX (owner only)
+  [ ] Optional: Redis queue job "generate_cv" so request returns fast
+  [ ] Never write AI free-text back into TimelineEntry
+
+Frontend:
+  [ ] /generate: paste JD → show matching insights → Generate
+  [ ] After generate: preview summary, Download PDF, Download DOCX, Save version
+  [ ] /documents: tabs CVs | Cover Letters | Bios
+  [ ] Card actions: download PDF, download DOCX, duplicate (re-queue), delete
+  [ ] Empty state: "Generate your first tailored CV."
+
+Acceptance:
+  - Generated files exist on disk and download with correct Content-Type
+  - Documents page lists versions with dates
+
+
+--------------------------------------------------------------------------------
+MILESTONE M3 — REDIS + MEILISEARCH
+--------------------------------------------------------------------------------
+Goal: Async jobs and fast recruiter search.
+
+Redis:
+  [ ] Connect via REDIS_URL
+  [ ] Queue workers (arq or RQ or equivalent) for:
+        generate_cv
+        reindex_profile
+        run_job_matches
+  [ ] Optional cache for public profile JSON
+  [ ] Rate limit expensive routes (generate, search)
+
+Meilisearch:
+  [ ] Deploy Meilisearch; MEILI_URL + MEILI_MASTER_KEY in API env
+  [ ] Index `profiles`: full_name, headline, industry, location, skills[],
+      years_experience, verification_score, username, is_public,
+      onboarding_completed
+  [ ] Index `jobs`: title, description, requirements, location, org name,
+      status, experience_years_min
+  [ ] Reindex profile on timeline/skills/profile update
+  [ ] Reindex job on create/update
+  [ ] Recruiter candidate search uses Meilisearch (fallback SQL if down)
+
+Acceptance:
+  - Recruiter search returns ranked results in <100ms typical on warm index
+  - Updating a skill eventually reflects in search (sync or short queue delay)
+
+
+--------------------------------------------------------------------------------
+MILESTONE M4 — OPPORTUNITIES + RECRUITER PILOT
+--------------------------------------------------------------------------------
+Goal: Professionals see jobs; recruiters can run a real pilot loop.
+
+Professional:
+  [ ] /opportunities — real cards from open jobs matched to profile
+  [ ] Match score, company, location, salary if present
+  [ ] Actions: View, Save (optional), Apply (external link or interest flag)
+  [ ] Wire notifications table or simple in-app list for "new match"
+
+Recruiter:
+  [ ] Job management table: status, matches count, created, actions
+        Edit, Archive, Duplicate
+  [ ] Dedicated create job form (all blueprint fields)
+  [ ] Run matching (queue) → /recruiter/jobs/[id]/matches
+  [ ] Save candidate + notes
+  [ ] Contact candidate (email deep-link or in-app message stub)
+  [ ] Organization verification submission fields (CAC, website, representative)
+  [ ] Verification status badge on org
+
+Acceptance:
+  - Org → job → match → view candidate profile works end-to-end on production
+  - Professional sees at least one matched opportunity when open jobs exist
+
+
+--------------------------------------------------------------------------------
+MILESTONE M5 — ONBOARDING, MOBILE, SETTINGS, NOTIFICATIONS POLISH
+--------------------------------------------------------------------------------
+Goal: Blueprint UX completeness for daily use.
+
+Onboarding (first login if onboarding_completed=false):
+  [ ] Multi-step wizard with progress bar
+  [ ] Step 1: Basic info (headline, industry, location, years, summary)
+  [ ] Step 2: First timeline entry
+  [ ] Step 3: Skills (autocomplete suggestions if possible)
+  [ ] Step 4: Certifications (optional upload)
+  [ ] Step 5: Verification setup prompts
+  [ ] Step 6: Completion score summary → dashboard
+
+Mobile:
+  [ ] Bottom nav: Home, Timeline, Generate, Opportunities, Profile
+  [ ] FAB: Add career entry
+
+Settings tabs:
+  [ ] Account (link out to Collab for password when AUTH_MODE=collab)
+  [ ] Notifications preferences
+  [ ] Privacy (is_public, username)
+  [ ] Security
+  [ ] Billing (placeholder until revenue)
+  [ ] Connected apps (placeholder)
+
+Notifications center:
+  [ ] Bell icon in shell
+  [ ] Categories: Verification, Jobs, Matches, Recruiters, Documents, System
+
+Landing polish:
+  [ ] Stronger interactive timeline preview
+  [ ] Trust stats section (can be static or live counts)
+  [ ] Clear Get Started → onboarding path
+
+Sidebar:
+  [ ] Account menu
+  [ ] Optional global search later
+
+Empty states:
+  [ ] Consistent copy across timeline, documents, verification, opportunities
+
+
+--------------------------------------------------------------------------------
+MILESTONE M6 — COMMERCIAL & LATER (BACKLOG, NOT BLOCKING PILOT)
+--------------------------------------------------------------------------------
+  [ ] Plan gates: Free / Professional / Enterprise
+  [ ] Billing integration
+  [ ] Limited vs unlimited CV downloads
+  [ ] Org paid search / contact limits
+  [ ] Industry taxonomy / professional knowledge base seed data
+  [ ] Peer endorsements / reputation system
+  [ ] Hiring pipelines (kanban)
+  [ ] Full messaging
+  [ ] Talent intelligence analytics dashboards
+  [ ] Public API access for enterprise
+
+
+================================================================================
+6. API SURFACE (CURRENT + PHASE 2 ADDITIONS)
+================================================================================
+
+Existing (Phase 1 / scaffold) — preserve contracts where possible:
+  POST   /api/auth/signup          (local only)
+  POST   /api/auth/login
+  POST   /api/auth/logout
+  GET    /api/auth/me
+  GET    /api/profile/me
+  PATCH  /api/profile/me
+  GET    /api/profile/dashboard
+  GET    /api/profile/public/{username}
+  CRUD   /api/timeline...
+  CRUD   /api/skills...
+  CRUD   /api/certifications...
+  GET    /api/verification
+  POST   /api/verification/{kind}/submit
+  GET    /api/documents
+  DELETE /api/documents/{id}
+  POST   /api/generate
+  POST   /api/organizations
+  GET    /api/organizations/mine
+  POST   /api/jobs
+  GET    /api/jobs/org/{id}
+  GET    /api/jobs/{id}
+  PATCH  /api/jobs/{id}
+  GET    /api/candidates/search
+  POST   /api/candidates/jobs/{id}/matches
+  GET    /api/candidates/jobs/{id}/matches
+
+Phase 2 should ADD (names flexible, behavior required):
+  POST   /api/verification/{kind}/upload
+  GET    /api/verification/files/{id}          (authz)
+  GET    /api/admin/verifications/pending
+  POST   /api/admin/verifications/{id}/approve
+  POST   /api/admin/verifications/{id}/reject
+  GET    /api/documents/{id}/download.pdf
+  GET    /api/documents/{id}/download.docx
+  GET    /api/opportunities                    (for current profile)
+  POST   /api/candidates/saved
+  GET    /api/search/candidates                (Meilisearch-backed)
+  POST   /api/jobs/{id}/matches/async          (enqueue)
+  GET    /api/notifications
+
+
+================================================================================
+7. ENV REFERENCE
+================================================================================
+
+API:
+  DATABASE_URL=
+  SECRET_KEY=
+  AUTH_MODE=collab|local|hybrid
+  ACCOUNTS_URL=https://accounts.collab.name.ng
+  COOKIE_DOMAIN=.collab.name.ng
+  COOKIE_SECURE=true
+  CORS_ORIGINS=https://crede.collab.name.ng
+  OPENAI_API_KEY=
+  OPENAI_MODEL=gpt-4o-mini
+  STORAGE_ROOT=/data/crede
+  REDIS_URL=redis://...
+  MEILI_URL=http://...
+  MEILI_MASTER_KEY=
+  # Do not rely on MinIO; S3_* may remain unused
+
+Web:
+  NEXT_PUBLIC_API_URL=https://api-crede.collab.name.ng
+  NEXT_PUBLIC_APP_URL=https://crede.collab.name.ng
+  NEXT_PUBLIC_ACCOUNTS_URL=https://accounts.collab.name.ng
+  API_PROXY_TARGET=   # leave unset if /backend/health already works;
+                      # or http://<api-internal>:8008 if verified on Coolify network
+
+
+================================================================================
+8. KNOWN OPERATIONAL LESSONS
+================================================================================
+
+1. Browser always calls /backend/* — "API base: /backend" on error cards is NORMAL.
+2. If /backend/health works without API_PROXY_TARGET, do not add a bad proxy env.
+3. Internal Docker hostnames that timeout should not be forced; use what works.
+4. Login 200 + /auth/me 200 + /profile/* 500 was schema/profile serialization —
+   fixed via external_id + hardened get_or_create_profile + ProfileOut builder.
+5. MinIO was painful — VPS disk is the chosen path.
+6. curl may be missing inside containers — use browser fetch or python urllib.
+
+
+================================================================================
+9. DEFINITION OF DONE — PHASE 2 COMPLETE
+================================================================================
+
+Phase 2 is complete when ALL of the following are true:
+
+  [ ] Verification docs upload to VPS and admin can approve/reject
+  [ ] CV generate writes real PDF and DOCX to VPS; user can download both
+  [ ] Redis processes at least generate_cv and run_job_matches jobs
+  [ ] Meilisearch powers recruiter candidate search (with SQL fallback)
+  [ ] /opportunities shows real matched open jobs for the logged-in professional
+  [ ] Recruiter pilot loop works: org → job → matches → view profile → save/contact
+  [ ] First-time onboarding wizard runs when onboarding_completed is false
+  [ ] Mobile has bottom navigation for primary destinations
+  [ ] No critical path depends on MinIO or Laravel
+
+Phase 1 must remain stable; do not regress Collab auth, timeline CRUD, or dashboard.
+
+
+================================================================================
+10. INSTRUCTIONS FOR THE NEXT AI / ENGINEER SESSION
+================================================================================
+
+1. Read this entire file before changing code.
+2. Prefer extending existing FastAPI routers and Next.js pages over new services.
+3. Start with Milestone M1 unless the owner specifies otherwise.
+4. Keep AUTH_MODE=collab behavior working in production.
+5. When adding file storage, use STORAGE_ROOT on VPS — not MinIO.
+6. When adding search, use Meilisearch — keep SQL fallback.
+7. When adding heavy work, prefer Redis-backed jobs over long HTTP requests.
+8. Update this blueprint’s checkboxes in a short CHANGELOG note when a milestone
+   ships (or ask the owner to mark milestones done).
+9. Do not claim Phase 2 complete until section 9 checkboxes are satisfied.
+
+END OF BLUEPRINT
+================================================================================

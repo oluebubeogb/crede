@@ -110,3 +110,48 @@ export const API = typeof window !== "undefined" ? "/backend" : process.env.NEXT
 export const getAccountsSession = getSession;
 export const loginWithCollab = login;
 export type CollabUser = CredeUser;
+
+/** Convenience helpers used by Phase 2 pages */
+async function request<T>(method: string, path: string, body?: unknown, isForm = false): Promise<T> {
+  const base = apiBase();
+  const url = path.startsWith("http")
+    ? path
+    : `${base}/api${path.startsWith("/") ? path : `/${path}`}`;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  let payload: BodyInit | undefined;
+  if (body !== undefined && body !== null) {
+    if (isForm) {
+      payload = body as FormData;
+    } else {
+      headers["Content-Type"] = "application/json";
+      payload = JSON.stringify(body);
+    }
+  }
+  const res = await fetch(url, {
+    method,
+    credentials: "include",
+    headers,
+    body: payload,
+  });
+  if (res.status === 401) {
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+    }
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const detail = err.detail;
+    throw new Error(typeof detail === "string" ? detail : res.statusText || "Request failed");
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+export const api = {
+  get: <T>(path: string) => request<T>("GET", path),
+  post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
+  patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
+  delete: <T>(path: string) => request<T>("DELETE", path),
+  postForm: <T>(path: string, form: FormData) => request<T>("POST", path, form, true),
+};
