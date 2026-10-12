@@ -1,7 +1,6 @@
-# Crede API — Coolify-friendly (API only).
-# Postgres is external (Coolify DB resource via DATABASE_URL).
-# Redis / Meilisearch are OPTIONAL — do not block API startup.
-# To add them later, use a separate Coolify service or profiles.
+# Crede API — matches Phase 1 Coolify networking.
+# MUST join external network "coolify" so DATABASE_URL internal hostnames resolve.
+# Redis / Meilisearch are optional (leave REDIS_URL / MEILI_URL empty).
 
 services:
   api:
@@ -25,7 +24,14 @@ services:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
     volumes:
       - crede_data:/data/crede
+    networks:
+      - coolify
     restart: unless-stopped
 
 volumes:
   crede_data:
+
+networks:
+  coolify:
+    external: true
+    name: coolify
