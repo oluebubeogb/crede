@@ -93,14 +93,12 @@ export function Sidebar() {
           );
         })}
 
-        {/* Segment divider between Settings and Recruiting */}
-        <div className="my-4 px-3">
-          <hr className="border-border" />
+        {/* Segment divider: space above line, then Recruiting title, then links */}
+        <div className="mx-3 mt-5 border-t border-border pt-4">
+          <p className="mb-2.5 text-xs font-medium uppercase tracking-wider text-muted">
+            Recruiting
+          </p>
         </div>
-
-        <p className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-muted">
-          Recruiting
-        </p>
         <div className="space-y-0.5">
           {recruiterNav.map((item) => {
             const active =
