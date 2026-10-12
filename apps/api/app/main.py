@@ -1,3 +1,5 @@
+import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -23,6 +25,8 @@ from app.routers import (
 from app.services.storage import ensure_dirs
 
 settings = get_settings()
+logger = logging.getLogger("crede")
+logging.basicConfig(level=logging.INFO)
 
 
 def _ensure_schema() -> None:
@@ -60,26 +64,55 @@ def _ensure_schema() -> None:
         ).fetchone()
         if not exists:
             conn.execute(text("ALTER TABLE profiles ADD COLUMN external_id VARCHAR(80)"))
-            
             conn.execute(
                 text("CREATE UNIQUE INDEX IF NOT EXISTS ix_profiles_external_id ON profiles (external_id)")
             )
 
 
+def _wait_for_db(retries: int = 15, delay: float = 2.0) -> None:
+    """Retry DB connect so Coolify/compose race does not crash-loop forever."""
+    last_err: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            logger.info("Database connection OK (attempt %s)", attempt)
+            return
+        except Exception as e:
+            last_err = e
+            logger.warning(
+                "Database not ready (attempt %s/%s): %s: %s",
+                attempt,
+                retries,
+                type(e).__name__,
+                e,
+            )
+            time.sleep(delay)
+    raise RuntimeError(f"Could not connect to DATABASE_URL after {retries} attempts: {last_err}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info(
+        "Crede API starting auth_mode=%s storage_root=%s",
+        settings.auth_mode,
+        settings.storage_root,
+    )
+    _wait_for_db()
     _ensure_schema()
     try:
         ensure_dirs()
-    except Exception:
-        pass
+        logger.info("Storage ready at %s", settings.storage_root)
+    except Exception as e:
+        logger.warning("Storage ensure_dirs failed (non-fatal): %s", e)
     yield
+    logger.info("Crede API shutting down")
 
 
 app = FastAPI(
     title="Crede API",
-    description="Verified professional identity — Phase 1 + Phase 2 complete. VPS storage, real CV files, opportunities.",
-    version="2.1.0",
+    description="Verified professional identity — Phase 1 + Phase 2. VPS storage, real CV files, opportunities.",
+    version="2.1.1",
     lifespan=lifespan,
 )
 
@@ -114,10 +147,20 @@ async def unhandled_exception(request: Request, exc: Exception):
 
 @app.get("/health")
 def health():
+    db_ok = False
+    db_error = None
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as e:
+        db_error = f"{type(e).__name__}: {e}"
     return {
-        "status": "ok",
+        "status": "ok" if db_ok else "degraded",
         "service": "crede-api",
         "phase": 2,
         "auth_mode": settings.auth_mode,
         "storage": "vps",
+        "database": "ok" if db_ok else "error",
+        "database_error": db_error,
     }
