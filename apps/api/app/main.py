@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.config import get_settings
@@ -26,23 +27,28 @@ def _ensure_schema() -> None:
     """create_all + light migrations for Phase 2 columns."""
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
+        # profiles.collab_user_id may still be integer from early Phase 1
         row = conn.execute(
             text(
                 """
-                SELECT data_type FROM information_schema.columns
+                SELECT data_type, is_nullable FROM information_schema.columns
                 WHERE table_schema = 'public'
                   AND table_name = 'profiles'
                   AND column_name = 'collab_user_id'
                 """
             )
         ).fetchone()
-        if row and row[0] in ("integer", "bigint", "smallint"):
-            conn.execute(text("ALTER TABLE profiles ALTER COLUMN collab_user_id DROP DEFAULT"))
-            conn.execute(
-                text(
-                    "ALTER TABLE profiles ALTER COLUMN collab_user_id TYPE VARCHAR(64) USING collab_user_id::text"
+        if row:
+            if row[0] in ("integer", "bigint", "smallint"):
+                conn.execute(text("ALTER TABLE profiles ALTER COLUMN collab_user_id DROP DEFAULT"))
+                conn.execute(
+                    text(
+                        "ALTER TABLE profiles ALTER COLUMN collab_user_id TYPE VARCHAR(64) USING collab_user_id::text"
+                    )
                 )
-            )
+            if row[1] == "NO":
+                conn.execute(text("ALTER TABLE profiles ALTER COLUMN collab_user_id DROP NOT NULL"))
+
         exists = conn.execute(
             text(
                 """
@@ -53,7 +59,9 @@ def _ensure_schema() -> None:
         ).fetchone()
         if not exists:
             conn.execute(text("ALTER TABLE profiles ADD COLUMN external_id VARCHAR(80)"))
-            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_profiles_external_id ON profiles (external_id)"))
+            conn.execute(
+                text("CREATE UNIQUE INDEX IF NOT EXISTS ix_profiles_external_id ON profiles (external_id)")
+            )
 
 
 @asynccontextmanager
@@ -64,8 +72,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Crede API",
-    description="Verified professional identity — Phase 1 + Phase 2 recruiter portal. Auth: local (default) or Collab SSO.",
-    version="2.0.0",
+    description="Verified professional identity — Phase 1 + Phase 2. Auth: local (default) or Collab SSO.",
+    version="2.0.1",
     lifespan=lifespan,
 )
 
@@ -84,10 +92,18 @@ app.include_router(skills.router, prefix="/api")
 app.include_router(certifications.router, prefix="/api")
 app.include_router(verification.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
-# Phase 2
 app.include_router(organizations.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(candidates.router, prefix="/api")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception(request: Request, exc: Exception):
+    """Surface real errors during Phase 2 rollout (avoid opaque 500)."""
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {exc}"},
+    )
 
 
 @app.get("/health")

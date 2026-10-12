@@ -12,9 +12,31 @@ from app.services.completion import refresh_scores
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 
+def _profile_out(profile: Profile) -> ProfileOut:
+    """Build ProfileOut without relying on strict ORM→Pydantic edge cases."""
+    return ProfileOut(
+        id=profile.id,
+        external_id=getattr(profile, "external_id", None),
+        collab_user_id=str(profile.collab_user_id) if profile.collab_user_id is not None else None,
+        email=profile.email,
+        full_name=profile.full_name,
+        username=profile.username,
+        headline=profile.headline,
+        industry=profile.industry,
+        location=profile.location,
+        years_experience=profile.years_experience,
+        summary=profile.summary,
+        onboarding_completed=bool(profile.onboarding_completed),
+        verification_score=int(profile.verification_score or 0),
+        profile_completion=int(profile.profile_completion or 0),
+        is_public=bool(profile.is_public if profile.is_public is not None else True),
+        created_at=profile.created_at,
+    )
+
+
 @router.get("/me", response_model=ProfileOut)
 def me(profile: Annotated[Profile, Depends(get_or_create_profile)]):
-    return profile
+    return _profile_out(profile)
 
 
 @router.patch("/me", response_model=ProfileOut)
@@ -36,7 +58,7 @@ def update_me(
         setattr(profile, k, v)
     db.commit()
     db.refresh(profile)
-    return refresh_scores(db, profile)
+    return _profile_out(refresh_scores(db, profile))
 
 
 @router.get("/dashboard", response_model=DashboardOut)
@@ -55,10 +77,10 @@ def dashboard(
     if not profile.timeline_entries:
         actions.append("Add first career milestone")
     return DashboardOut(
-        profile=ProfileOut.model_validate(profile),
-        timeline_count=len(profile.timeline_entries),
-        verified_docs=sum(1 for v in profile.verifications if v.status == "approved"),
-        generated_cvs=sum(1 for d in profile.documents if d.doc_type == "cv"),
+        profile=_profile_out(profile),
+        timeline_count=len(profile.timeline_entries or []),
+        verified_docs=sum(1 for v in (profile.verifications or []) if v.status == "approved"),
+        generated_cvs=sum(1 for d in (profile.documents or []) if d.doc_type == "cv"),
         recommended_actions=actions,
     )
 
@@ -68,4 +90,4 @@ def public_profile(username: str, db: Annotated[Session, Depends(get_db)]):
     p = db.query(Profile).filter(Profile.username == username, Profile.is_public == True).first()
     if not p:
         raise HTTPException(404, "Profile not found")
-    return p
+    return _profile_out(p)

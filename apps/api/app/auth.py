@@ -236,26 +236,76 @@ async def get_or_create_profile(
     db: Annotated[Session, Depends(get_db)],
 ) -> Profile:
     """Resolve or create Profile. Keyed by external_id (local:N or collab:UUID)."""
+    from sqlalchemy.exc import SQLAlchemyError
+
     external_id = auth.id
-    profile = db.query(Profile).filter(Profile.external_id == external_id).first()
+    try:
+        profile = db.query(Profile).filter(Profile.external_id == external_id).first()
+    except SQLAlchemyError as e:
+        # Column missing or schema drift — try email fallback then surface clear error
+        db.rollback()
+        try:
+            profile = db.query(Profile).filter(Profile.email == auth.email).first()
+        except SQLAlchemyError as e2:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Profile schema error (run API migration / restart): {e2}",
+            ) from e2
+        if profile is None:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Profile lookup failed (external_id column?). DB error: {e}",
+            ) from e
+
     if not profile:
         # legacy lookup by collab_user_id for existing rows
         if auth.source == "collab":
-            legacy = db.query(Profile).filter(Profile.collab_user_id == auth.id.replace("collab:", "")).first()
+            try:
+                legacy = (
+                    db.query(Profile)
+                    .filter(Profile.collab_user_id == auth.id.replace("collab:", ""))
+                    .first()
+                )
+            except SQLAlchemyError:
+                db.rollback()
+                legacy = None
             if legacy:
-                legacy.external_id = external_id
-                db.commit()
-                db.refresh(legacy)
+                try:
+                    legacy.external_id = external_id
+                    db.commit()
+                    db.refresh(legacy)
+                except SQLAlchemyError:
+                    db.rollback()
                 return legacy
-        profile = Profile(
-            external_id=external_id,
-            collab_user_id=auth.id.replace("collab:", "") if auth.source == "collab" else None,
-            email=auth.email,
-            full_name=auth.full_name,
-        )
-        db.add(profile)
-        db.commit()
-        db.refresh(profile)
+
+        # Also match existing row by email (local re-login)
+        profile = db.query(Profile).filter(Profile.email == auth.email).first()
+        if profile:
+            try:
+                if not getattr(profile, "external_id", None):
+                    profile.external_id = external_id
+                    db.commit()
+                    db.refresh(profile)
+            except SQLAlchemyError:
+                db.rollback()
+            return profile
+
+        try:
+            profile = Profile(
+                external_id=external_id,
+                collab_user_id=auth.id.replace("collab:", "") if auth.source == "collab" else None,
+                email=auth.email,
+                full_name=auth.full_name,
+            )
+            db.add(profile)
+            db.commit()
+            db.refresh(profile)
+        except SQLAlchemyError as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not create profile (check DB columns users/profiles.external_id): {e}",
+            ) from e
     else:
         changed = False
         if auth.email and profile.email != auth.email:
@@ -265,8 +315,12 @@ async def get_or_create_profile(
             profile.full_name = auth.full_name
             changed = True
         if changed:
-            db.commit()
-            db.refresh(profile)
+            try:
+                db.commit()
+                db.refresh(profile)
+            except SQLAlchemyError as e:
+                db.rollback()
+                raise HTTPException(status_code=500, detail=f"Profile update failed: {e}") from e
     return profile
 
 
