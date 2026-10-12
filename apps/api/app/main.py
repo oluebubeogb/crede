@@ -28,91 +28,108 @@ settings = get_settings()
 logger = logging.getLogger("crede")
 logging.basicConfig(level=logging.INFO)
 
+# Set True only after a successful schema pass this process
+_schema_ready = False
+_db_last_error: str | None = None
 
-def _ensure_schema() -> None:
-    """create_all + light migrations for Phase 2 columns."""
-    Base.metadata.create_all(bind=engine)
-    with engine.begin() as conn:
-        row = conn.execute(
-            text(
-                """
-                SELECT data_type, is_nullable FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND table_name = 'profiles'
-                  AND column_name = 'collab_user_id'
-                """
-            )
-        ).fetchone()
-        if row:
-            if row[0] in ("integer", "bigint", "smallint"):
-                conn.execute(text("ALTER TABLE profiles ALTER COLUMN collab_user_id DROP DEFAULT"))
+
+def _try_schema() -> bool:
+    """Attempt create_all + light migrations. Returns True on success."""
+    global _schema_ready, _db_last_error
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        Base.metadata.create_all(bind=engine)
+        with engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    SELECT data_type, is_nullable FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'profiles'
+                      AND column_name = 'collab_user_id'
+                    """
+                )
+            ).fetchone()
+            if row:
+                if row[0] in ("integer", "bigint", "smallint"):
+                    conn.execute(text("ALTER TABLE profiles ALTER COLUMN collab_user_id DROP DEFAULT"))
+                    conn.execute(
+                        text(
+                            "ALTER TABLE profiles ALTER COLUMN collab_user_id TYPE VARCHAR(64) "
+                            "USING collab_user_id::text"
+                        )
+                    )
+                if row[1] == "NO":
+                    conn.execute(text("ALTER TABLE profiles ALTER COLUMN collab_user_id DROP NOT NULL"))
+
+            exists = conn.execute(
+                text(
+                    """
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'profiles'
+                      AND column_name = 'external_id'
+                    """
+                )
+            ).fetchone()
+            if not exists:
+                conn.execute(text("ALTER TABLE profiles ADD COLUMN external_id VARCHAR(80)"))
                 conn.execute(
                     text(
-                        "ALTER TABLE profiles ALTER COLUMN collab_user_id TYPE VARCHAR(64) USING collab_user_id::text"
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ix_profiles_external_id "
+                        "ON profiles (external_id)"
                     )
                 )
-            if row[1] == "NO":
-                conn.execute(text("ALTER TABLE profiles ALTER COLUMN collab_user_id DROP NOT NULL"))
-
-        exists = conn.execute(
-            text(
-                """
-                SELECT 1 FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'external_id'
-                """
-            )
-        ).fetchone()
-        if not exists:
-            conn.execute(text("ALTER TABLE profiles ADD COLUMN external_id VARCHAR(80)"))
-            conn.execute(
-                text("CREATE UNIQUE INDEX IF NOT EXISTS ix_profiles_external_id ON profiles (external_id)")
-            )
-
-
-def _wait_for_db(retries: int = 15, delay: float = 2.0) -> None:
-    """Retry DB connect so Coolify/compose race does not crash-loop forever."""
-    last_err: Exception | None = None
-    for attempt in range(1, retries + 1):
-        try:
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            logger.info("Database connection OK (attempt %s)", attempt)
-            return
-        except Exception as e:
-            last_err = e
-            logger.warning(
-                "Database not ready (attempt %s/%s): %s: %s",
-                attempt,
-                retries,
-                type(e).__name__,
-                e,
-            )
-            time.sleep(delay)
-    raise RuntimeError(f"Could not connect to DATABASE_URL after {retries} attempts: {last_err}")
+        _schema_ready = True
+        _db_last_error = None
+        logger.info("Database schema ready")
+        return True
+    except Exception as e:
+        _schema_ready = False
+        _db_last_error = f"{type(e).__name__}: {e}"
+        logger.error("Database/schema failed: %s", _db_last_error)
+        return False
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    NEVER raise here — Coolify treats process exit as restart loop → Cloudflare 502.
+    Retry DB a few times, then stay up so /health answers.
+    """
     logger.info(
         "Crede API starting auth_mode=%s storage_root=%s",
         settings.auth_mode,
         settings.storage_root,
     )
-    _wait_for_db()
-    _ensure_schema()
+    ok = False
+    for attempt in range(1, 8):
+        if _try_schema():
+            ok = True
+            break
+        logger.warning("DB not ready (attempt %s/7), retrying in 2s…", attempt)
+        time.sleep(2)
+    if not ok:
+        logger.error(
+            "Starting WITHOUT database. Fix DATABASE_URL and redeploy. Last error: %s",
+            _db_last_error,
+        )
+
     try:
         ensure_dirs()
         logger.info("Storage ready at %s", settings.storage_root)
     except Exception as e:
         logger.warning("Storage ensure_dirs failed (non-fatal): %s", e)
+
     yield
     logger.info("Crede API shutting down")
 
 
 app = FastAPI(
     title="Crede API",
-    description="Verified professional identity — Phase 1 + Phase 2. VPS storage, real CV files, opportunities.",
-    version="2.1.1",
+    description="Verified professional identity — Phase 1 + Phase 2.",
+    version="2.1.2",
     lifespan=lifespan,
 )
 
@@ -148,19 +165,23 @@ async def unhandled_exception(request: Request, exc: Exception):
 @app.get("/health")
 def health():
     db_ok = False
-    db_error = None
+    db_error = _db_last_error
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         db_ok = True
+        if not _schema_ready:
+            _try_schema()
     except Exception as e:
         db_error = f"{type(e).__name__}: {e}"
     return {
         "status": "ok" if db_ok else "degraded",
         "service": "crede-api",
         "phase": 2,
+        "version": "2.1.2",
         "auth_mode": settings.auth_mode,
         "storage": "vps",
         "database": "ok" if db_ok else "error",
+        "schema_ready": _schema_ready,
         "database_error": db_error,
     }

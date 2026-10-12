@@ -1,7 +1,7 @@
-# Crede Phase 2 — API + Redis + Meilisearch
-# Postgres is usually managed externally (Coolify resource / DATABASE_URL).
-# Redis and Meilisearch are internal-only (no host port publish) to avoid
-# conflicts with other services already bound to 6379 / 7700.
+# Crede API — Coolify-friendly (API only).
+# Postgres is external (Coolify DB resource via DATABASE_URL).
+# Redis / Meilisearch are OPTIONAL — do not block API startup.
+# To add them later, use a separate Coolify service or profiles.
 
 services:
   api:
@@ -13,37 +13,19 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-secret}
       AUTH_MODE: ${AUTH_MODE:-local}
       ACCOUNTS_URL: ${ACCOUNTS_URL:-https://accounts.collab.name.ng}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://crede.collab.name.ng,http://localhost:3001}
-      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ACCOUNTS_PUBLIC_URL: ${ACCOUNTS_PUBLIC_URL:-https://accounts.collab.name.ng}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://crede.collab.name.ng}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-.collab.name.ng}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
-      STORAGE_ROOT: /data/crede
-      REDIS_URL: redis://redis:6379/0
-      MEILI_URL: http://meilisearch:7700
-      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-crede_meili_master}
+      STORAGE_ROOT: ${STORAGE_ROOT:-/data/crede}
+      REDIS_URL: ${REDIS_URL:-}
+      MEILI_URL: ${MEILI_URL:-}
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
     volumes:
       - crede_data:/data/crede
-    depends_on:
-      - redis
-      - meilisearch
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    # Internal only — do not publish 6379 on the host
-    restart: unless-stopped
-
-  meilisearch:
-    image: getmeili/meilisearch:v1.11
-    # Internal only — do not publish 7700 on the host
-    environment:
-      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-crede_meili_master}
-      MEILI_ENV: development
-    volumes:
-      - meili_data:/meili_data
     restart: unless-stopped
 
 volumes:
   crede_data:
-  meili_data:
