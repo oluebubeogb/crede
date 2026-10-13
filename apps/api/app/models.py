@@ -314,3 +314,43 @@ class SavedCandidate(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     saved_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ─── Occupation catalog (jobs curation drop folder) ─────────────────────────
+
+class Occupation(Base):
+    """Canonical job role from curated xlsx/csv (ISCO, O*NET-style, or custom)."""
+
+    __tablename__ = "occupations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), index=True)
+    title_normalized: Mapped[str] = mapped_column(String(255), index=True)
+    isco_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    level: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    definition: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tasks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    aliases: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)  # list[str]
+    skills_suggested: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    extra: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    source_file: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UserTitleSuggestion(Base):
+    """Titles users enter that are not in the catalog — for backend learning."""
+
+    __tablename__ = "user_title_suggestions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), index=True)
+    title_normalized: Mapped[str] = mapped_column(String(255), index=True)
+    times_seen: Mapped[int] = mapped_column(Integer, default=1)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    profile_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    promoted: Mapped[bool] = mapped_column(Boolean, default=False)  # moved into occupations
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

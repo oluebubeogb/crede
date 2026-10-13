@@ -31,6 +31,31 @@ def add_cert(
     return cert
 
 
+@router.patch("/{cert_id}", response_model=CertificationOut)
+def update_cert(
+    cert_id: int,
+    body: CertificationIn,
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    cert = (
+        db.query(Certification)
+        .filter(Certification.id == cert_id, Certification.profile_id == profile.id)
+        .first()
+    )
+    if not cert:
+        raise HTTPException(404, "Not found")
+    was_verified = (cert.verification_status or "").lower() in ("verified", "approved")
+    for k, v in body.model_dump().items():
+        setattr(cert, k, v)
+    if was_verified:
+        cert.verification_status = "unverified"
+    db.commit()
+    db.refresh(cert)
+    refresh_scores(db, profile)
+    return cert
+
+
 @router.delete("/{cert_id}", status_code=204)
 def remove_cert(
     cert_id: int,
@@ -46,3 +71,4 @@ def remove_cert(
         raise HTTPException(404, "Not found")
     db.delete(cert)
     db.commit()
+    refresh_scores(db, profile)

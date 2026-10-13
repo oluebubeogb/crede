@@ -35,6 +35,27 @@ def add_skill(
     return skill
 
 
+@router.patch("/{skill_id}", response_model=SkillOut)
+def update_skill(
+    skill_id: int,
+    body: SkillIn,
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    skill = db.query(Skill).filter(Skill.id == skill_id, Skill.profile_id == profile.id).first()
+    if not skill:
+        raise HTTPException(404, "Not found")
+    was_verified = bool(skill.verified)
+    for k, v in body.model_dump().items():
+        setattr(skill, k, v)
+    if was_verified:
+        skill.verified = False
+    db.commit()
+    db.refresh(skill)
+    refresh_scores(db, profile)
+    return skill
+
+
 @router.delete("/{skill_id}", status_code=204)
 def remove_skill(
     skill_id: int,
@@ -46,3 +67,4 @@ def remove_skill(
         raise HTTPException(404, "Not found")
     db.delete(skill)
     db.commit()
+    refresh_scores(db, profile)

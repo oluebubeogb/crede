@@ -61,10 +61,14 @@ def update_entry(
     )
     if not entry:
         raise HTTPException(404, "Entry not found")
+    was_verified = (entry.verification_status or "").lower() in ("verified", "approved")
     for k, v in body.model_dump().items():
         setattr(entry, k, v)
+    if was_verified:
+        entry.verification_status = "unverified"
     db.commit()
     db.refresh(entry)
+    refresh_scores(db, profile)
     return entry
 
 

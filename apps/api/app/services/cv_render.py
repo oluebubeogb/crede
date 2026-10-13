@@ -245,15 +245,103 @@ def render_docx(snapshot: dict[str, Any], template: str = "professional") -> byt
     return buf.getvalue()
 
 
+def _parse_markdown_blocks(md: str) -> list[tuple[str, str]]:
+    """Very small markdown splitter → (kind, text) kind in heading1,heading2,heading3,para,bullet."""
+    blocks: list[tuple[str, str]] = []
+    for raw in (md or "").splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        if line.startswith("# "):
+            blocks.append(("h1", line[2:].strip()))
+        elif line.startswith("## "):
+            blocks.append(("h2", line[3:].strip()))
+        elif line.startswith("### "):
+            blocks.append(("h3", line[4:].strip()))
+        elif line.lstrip().startswith(("- ", "* ")):
+            blocks.append(("bullet", line.lstrip()[2:].strip()))
+        else:
+            # strip simple **bold**
+            t = line.replace("**", "").replace("*", "")
+            blocks.append(("para", t))
+    return blocks
+
+
+def render_pdf_from_markdown(markdown: str, snapshot: dict[str, Any] | None = None) -> bytes:
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm,
+    )
+    styles = _styles()
+    story = []
+    for kind, text in _parse_markdown_blocks(markdown):
+        if kind == "h1":
+            story.append(Paragraph(text, styles["name"]))
+        elif kind == "h2":
+            story.append(Paragraph(text, styles["section"]))
+        elif kind == "h3":
+            story.append(Paragraph(text, styles["job_title"]))
+        elif kind == "bullet":
+            story.append(Paragraph(f"• {text}", styles["bullet"]))
+        else:
+            story.append(Paragraph(text, styles["body"]))
+    if not story:
+        story.append(Paragraph((snapshot or {}).get("name") or "Document", styles["name"]))
+    doc.build(story)
+    return buf.getvalue()
+
+
+def render_docx_from_markdown(markdown: str, snapshot: dict[str, Any] | None = None) -> bytes:
+    doc = Document()
+    section = doc.sections[0]
+    section.top_margin = Inches(0.6)
+    section.bottom_margin = Inches(0.6)
+    section.left_margin = Inches(0.7)
+    section.right_margin = Inches(0.7)
+    for kind, text in _parse_markdown_blocks(markdown):
+        if kind == "h1":
+            p = doc.add_paragraph()
+            run = p.add_run(text)
+            run.bold = True
+            run.font.size = Pt(18)
+        elif kind == "h2":
+            p = doc.add_paragraph()
+            run = p.add_run(text)
+            run.bold = True
+            run.font.size = Pt(12)
+        elif kind == "h3":
+            p = doc.add_paragraph()
+            run = p.add_run(text)
+            run.bold = True
+            run.font.size = Pt(10)
+        elif kind == "bullet":
+            p = doc.add_paragraph(text, style="List Bullet")
+            for run in p.runs:
+                run.font.size = Pt(9)
+        else:
+            p = doc.add_paragraph(text)
+            for run in p.runs:
+                run.font.size = Pt(9)
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
+
+
 def write_generated_files(
     profile_id: int,
     doc_id: int,
     snapshot: dict[str, Any],
     template: str = "professional",
 ) -> tuple[str, str]:
-    """Render PDF + DOCX and store on VPS. Returns (pdf_key, docx_key)."""
-    pdf_bytes = render_pdf(snapshot, template)
-    docx_bytes = render_docx(snapshot, template)
+    """Write PDF + DOCX from snapshot markdown (preferred) or structured fields."""
+    md = snapshot.get("markdown")
+    if md:
+        pdf_bytes = render_pdf_from_markdown(md, snapshot)
+        docx_bytes = render_docx_from_markdown(md, snapshot)
+    else:
+        pdf_bytes = render_pdf(snapshot, template)
+        docx_bytes = render_docx(snapshot, template)
     pdf_key = f"generated/{profile_id}/{doc_id}.pdf"
     docx_key = f"generated/{profile_id}/{doc_id}.docx"
     save_bytes(pdf_key, pdf_bytes)

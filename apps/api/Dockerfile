@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 COPY seed_data.py .
+COPY data/ ./data/
 
 RUN useradd -m -u 1000 appuser \
     && mkdir -p /data/crede \

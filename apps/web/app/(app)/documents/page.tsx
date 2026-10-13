@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
 type Doc = {
@@ -14,11 +15,21 @@ type Doc = {
   storage_key_docx?: string | null;
 };
 
-export default function DocumentsPage() {
+type DocDetail = Doc & {
+  markdown?: string | null;
+};
+
+function DocumentsInner() {
+  const search = useSearchParams();
+  const editId = search.get("edit");
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<DocDetail | null>(null);
+  const [markdown, setMarkdown] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api
       .get<Doc[]>("/documents")
       .then(setDocs)
@@ -26,67 +37,142 @@ export default function DocumentsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!editId) return;
+    api
+      .get<DocDetail>(`/documents/${editId}`)
+      .then((d) => {
+        setEditing(d);
+        setMarkdown(d.markdown || "");
+      })
+      .catch(console.error);
+  }, [editId]);
+
+  async function openEdit(id: number) {
+    const d = await api.get<DocDetail>(`/documents/${id}`);
+    setEditing(d);
+    setMarkdown(d.markdown || "");
+    setMsg(null);
+  }
+
+  async function saveDraft() {
+    if (!editing) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const d = await api.patch<DocDetail>(`/documents/${editing.id}`, {
+        markdown,
+      });
+      setEditing(d);
+      setMsg("Saved. PDF and DOCX re-rendered from this draft (no AI call).");
+      load();
+    } catch (e: unknown) {
+      setMsg(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function remove(id: number) {
     if (!confirm("Delete this document?")) return;
     await api.delete(`/documents/${id}`);
+    if (editing?.id === id) setEditing(null);
     setDocs((d) => d.filter((x) => x.id !== id));
   }
 
   return (
-    <div className="p-6 max-w-4xl space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Documents</h1>
-          <p className="text-sm text-slate-500 mt-1">Generated CVs, cover letters, and bios.</p>
+          <h1 className="text-2xl font-semibold">Documents</h1>
+          <p className="text-sm text-muted mt-1">
+            Edit drafts in the browser, then download PDF or DOCX.
+          </p>
         </div>
-        <Link
-          href="/generate"
-          className="h-11 px-5 rounded-xl bg-blue-600 text-white text-sm font-medium inline-flex items-center"
-        >
-          Generate CV
+        <Link href="/generate" className="btn-primary text-sm">
+          Generate
         </Link>
       </div>
 
-      {loading && <p className="text-slate-500">Loading…</p>}
+      {loading && <p className="text-muted">Loading…</p>}
 
-      {!loading && docs.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-slate-200 dark:border-zinc-700 py-16 text-center">
-          <p className="text-slate-600 dark:text-zinc-400 text-lg">Generate your first tailored CV.</p>
-          <Link href="/generate" className="mt-4 inline-block text-blue-600 text-sm font-medium">
-            Go to Generate →
+      {!loading && docs.length === 0 && !editing && (
+        <div className="card text-center py-16">
+          <p className="text-muted">Generate your first tailored CV or cover letter.</p>
+          <Link href="/generate" className="btn-primary mt-4 inline-flex">
+            Go to Generate
           </Link>
+        </div>
+      )}
+
+      {editing && (
+        <div className="card space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-semibold">{editing.title}</h2>
+              <p className="text-xs text-muted capitalize">
+                {editing.doc_type} · {editing.template}
+              </p>
+            </div>
+            <button type="button" className="text-sm text-muted" onClick={() => setEditing(null)}>
+              Close
+            </button>
+          </div>
+          <textarea
+            className="input min-h-[360px] font-mono text-sm py-3"
+            value={markdown}
+            onChange={(e) => setMarkdown(e.target.value)}
+          />
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-primary" disabled={saving} onClick={saveDraft}>
+              {saving ? "Saving…" : "Save & re-render files"}
+            </button>
+            <a
+              href={`/backend/api/documents/${editing.id}/download.pdf`}
+              className="btn-secondary text-sm"
+            >
+              Download PDF
+            </a>
+            <a
+              href={`/backend/api/documents/${editing.id}/download.docx`}
+              className="btn-secondary text-sm"
+            >
+              Download DOCX
+            </a>
+          </div>
+          {msg && <p className="text-sm text-muted">{msg}</p>}
         </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {docs.map((d) => (
-          <div
-            key={d.id}
-            className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5"
-          >
-            <p className="font-medium text-slate-900 dark:text-white">{d.title}</p>
-            <p className="text-sm text-slate-500 capitalize mt-0.5">
+          <div key={d.id} className="card">
+            <p className="font-medium">{d.title}</p>
+            <p className="text-sm text-muted capitalize mt-0.5">
               {d.doc_type} · {d.template}
             </p>
-            <p className="mt-2 text-xs text-slate-400">{new Date(d.created_at).toLocaleString()}</p>
+            <p className="mt-2 text-xs text-muted">{new Date(d.created_at).toLocaleString()}</p>
             <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" className="btn-secondary text-sm" onClick={() => openEdit(d.id)}>
+                Edit
+              </button>
               <a
                 href={`/backend/api/documents/${d.id}/download.pdf`}
-                className="h-9 px-3 rounded-lg border border-slate-200 dark:border-zinc-700 text-sm inline-flex items-center"
+                className="btn-secondary text-sm"
               >
                 PDF
               </a>
               <a
                 href={`/backend/api/documents/${d.id}/download.docx`}
-                className="h-9 px-3 rounded-lg border border-slate-200 dark:border-zinc-700 text-sm inline-flex items-center"
+                className="btn-secondary text-sm"
               >
                 DOCX
               </a>
-              <button
-                type="button"
-                onClick={() => remove(d.id)}
-                className="h-9 px-3 rounded-lg text-sm text-red-600"
-              >
+              <button type="button" className="text-sm text-danger" onClick={() => remove(d.id)}>
                 Delete
               </button>
             </div>
@@ -94,5 +180,14 @@ export default function DocumentsPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+
+export default function DocumentsPage() {
+  return (
+    <Suspense fallback={<p className="text-muted p-6">Loading…</p>}>
+      <DocumentsInner />
+    </Suspense>
   );
 }

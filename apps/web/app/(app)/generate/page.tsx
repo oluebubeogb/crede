@@ -1,23 +1,29 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 
 type Result = {
   document_id: number;
   title: string;
   template: string;
+  tailored?: boolean;
+  tailor_mode?: string;
   matching: {
     required_skills: string[];
     missing_skills: string[];
     suggested_experiences: string[];
     keywords: string[];
   };
+  download_pdf_url?: string | null;
+  download_docx_url?: string | null;
 };
 
 export default function GeneratePage() {
   const [jd, setJd] = useState("");
   const [template, setTemplate] = useState("professional");
+  const [docType, setDocType] = useState<"cv" | "cover_letter">("cv");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,10 +32,15 @@ export default function GeneratePage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setResult(null);
     try {
       const res = await api<Result>("/api/generate", {
         method: "POST",
-        body: JSON.stringify({ job_description: jd, template, doc_type: "cv" }),
+        body: JSON.stringify({
+          job_description: jd,
+          template,
+          doc_type: docType,
+        }),
       });
       setResult(res);
     } catch (err: unknown) {
@@ -41,8 +52,32 @@ export default function GeneratePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Generate CV</h1>
-      <p className="text-sm text-muted">Paste a job description. We match your timeline and produce a tailored CV.</p>
+      <h1 className="text-2xl font-semibold">Generate</h1>
+      <p className="text-sm text-muted">
+        Paste a job description. One AI pass produces a tailored draft; edit and download from Documents.
+      </p>
+
+      <div className="flex rounded-btn border border-border p-1 max-w-sm">
+        <button
+          type="button"
+          className={`flex-1 rounded-btn py-2 text-sm font-medium ${
+            docType === "cv" ? "bg-accent text-white" : "text-muted"
+          }`}
+          onClick={() => setDocType("cv")}
+        >
+          CV
+        </button>
+        <button
+          type="button"
+          className={`flex-1 rounded-btn py-2 text-sm font-medium ${
+            docType === "cover_letter" ? "bg-accent text-white" : "text-muted"
+          }`}
+          onClick={() => setDocType("cover_letter")}
+        >
+          Cover letter
+        </button>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-2">
         <form onSubmit={generate} className="space-y-4">
           <div>
@@ -66,16 +101,25 @@ export default function GeneratePage() {
             </select>
           </div>
           <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? "Generating…" : "Generate CV"}
+            {loading
+              ? "Generating…"
+              : docType === "cover_letter"
+                ? "Generate cover letter"
+                : "Generate CV"}
           </button>
           {error && <p className="text-sm text-danger">{error}</p>}
         </form>
+
         <div className="card min-h-[280px]">
-          <h2 className="font-semibold">Matching insights</h2>
+          <h2 className="font-semibold">Result</h2>
           {!result && <p className="mt-4 text-sm text-muted">Results appear after generation.</p>}
           {result && (
             <div className="mt-4 space-y-4 text-sm">
               <p className="font-medium">{result.title}</p>
+              <p className="text-xs text-muted">
+                Mode: {result.tailor_mode || "—"}
+                {result.tailored ? " · AI tailored" : " · heuristic"}
+              </p>
               <div>
                 <p className="text-xs uppercase text-muted">Required skills</p>
                 <p className="mt-1">{result.matching.required_skills.join(", ") || "—"}</p>
@@ -84,15 +128,21 @@ export default function GeneratePage() {
                 <p className="text-xs uppercase text-muted">Missing skills</p>
                 <p className="mt-1">{result.matching.missing_skills.join(", ") || "None"}</p>
               </div>
-              <div>
-                <p className="text-xs uppercase text-muted">Suggested experiences</p>
-                <ul className="mt-1 list-disc pl-5">
-                  {result.matching.suggested_experiences.map((s) => (
-                    <li key={s}>{s}</li>
-                  ))}
-                </ul>
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Link href={`/documents?edit=${result.document_id}`} className="btn-primary text-sm">
+                  Edit draft
+                </Link>
+                {result.download_pdf_url && (
+                  <a href={`/backend${result.download_pdf_url}`} className="btn-secondary text-sm">
+                    PDF
+                  </a>
+                )}
+                {result.download_docx_url && (
+                  <a href={`/backend${result.download_docx_url}`} className="btn-secondary text-sm">
+                    DOCX
+                  </a>
+                )}
               </div>
-              <p className="text-xs text-muted">Document saved · ID {result.document_id}. PDF/DOCX export wires to storage next.</p>
             </div>
           )}
         </div>

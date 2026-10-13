@@ -21,8 +21,11 @@ from app.routers import (
     jobs,
     candidates,
     opportunities,
+    occupations,
 )
 from app.services.storage import ensure_dirs
+from app.services.occupations_import import import_all
+from app.database import SessionLocal
 
 settings = get_settings()
 logger = logging.getLogger("crede")
@@ -138,6 +141,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Storage ensure_dirs failed (non-fatal): %s", e)
 
+    if ok:
+        try:
+            db = SessionLocal()
+            try:
+                result = import_all(db)
+                logger.info("Occupations import: %s", result)
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning("Occupations import skipped: %s", e)
+
     yield
     logger.info("Crede API shutting down")
 
@@ -168,6 +182,7 @@ app.include_router(organizations.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(candidates.router, prefix="/api")
 app.include_router(opportunities.router, prefix="/api")
+app.include_router(occupations.router, prefix="/api")
 
 
 @app.exception_handler(Exception)
