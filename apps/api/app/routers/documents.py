@@ -8,7 +8,7 @@ from app.auth import get_or_create_profile
 from app.database import get_db
 from app.models import GeneratedDocument, Profile
 from app.schemas import DocumentOut, GenerateCVRequest, GenerateCVResponse, MatchingInsights
-from app.services.cv_generate import analyze_job_description, build_cv_snapshot, jd_hash, match_profile
+from app.services.cv_generate import analyze_job_description, jd_hash, match_profile, tailor_cv_to_job
 from app.services.cv_render import write_generated_files
 from app.services.storage import delete_file, read_bytes, exists
 
@@ -49,8 +49,10 @@ async def generate_cv(
         raise HTTPException(400, "Add at least one career timeline entry before generating a CV")
     insights = await analyze_job_description(body.job_description)
     insights = match_profile(profile, insights)
-    # enrich snapshot with email for meta line
-    snapshot = build_cv_snapshot(profile, insights, body.template)
+    # Tailor wording to this JD (LLM) — never written back to timeline
+    snapshot = await tailor_cv_to_job(
+        profile, insights, body.job_description, body.template
+    )
     snapshot["email"] = profile.email
     title = f"{body.doc_type.upper()} — {profile.headline or profile.full_name or 'Profile'}"
     doc = GeneratedDocument(
