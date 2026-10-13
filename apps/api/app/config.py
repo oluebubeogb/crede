@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = ""
     llm_model: str = ""
-    llm_timeout_seconds: float = 45.0
-    llm_max_tokens: int = 2500
+    llm_timeout_seconds: float = 120.0
+    llm_max_tokens: int = 4000
 
     # Legacy aliases (Coolify may still set these)
     openai_api_key: str = ""

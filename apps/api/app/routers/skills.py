@@ -68,3 +68,53 @@ def remove_skill(
     db.delete(skill)
     db.commit()
     refresh_scores(db, profile)
+
+
+@router.get("/catalog/search")
+def search_skill_catalog(
+    q: str = "",
+    limit: int = 15,
+    db: Session = Depends(get_db),
+):
+    """Autocomplete from curated skills drop folder."""
+    from app.models import SkillCatalog
+    from sqlalchemy import or_
+
+    q = (q or "").strip()
+    query = db.query(SkillCatalog).filter(SkillCatalog.is_active.is_(True))
+    if q:
+        nq = f"%{q.lower()}%"
+        query = query.filter(
+            or_(
+                SkillCatalog.name_normalized.ilike(nq),
+                SkillCatalog.name.ilike(f"%{q}%"),
+            )
+        )
+    rows = query.order_by(SkillCatalog.name).limit(limit).all()
+    # alias fallback
+    if len(rows) < limit and q:
+        more = db.query(SkillCatalog).filter(SkillCatalog.is_active.is_(True)).limit(800).all()
+        seen = {r.id for r in rows}
+        ql = q.lower()
+        for r in more:
+            if r.id in seen:
+                continue
+            if any(ql in str(a).lower() for a in (r.aliases or [])):
+                rows.append(r)
+            if len(rows) >= limit:
+                break
+    return [
+        {"id": r.id, "name": r.name, "category": r.category, "description": r.description}
+        for r in rows[:limit]
+    ]
+
+
+@router.post("/catalog/import")
+def import_skill_catalog(
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Session = Depends(get_db),
+):
+    from app.services.skills_import import import_all, discover_files
+    result = import_all(db)
+    result["files_on_disk"] = [p.name for p in discover_files()]
+    return result

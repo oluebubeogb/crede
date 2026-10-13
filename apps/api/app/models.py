@@ -209,6 +209,11 @@ class GeneratedDocument(Base):
     storage_key_pdf: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     storage_key_docx: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     content_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    # pending | processing | ready | failed
+    status: Mapped[str] = mapped_column(String(32), default="ready")
+    target_job_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    target_organization: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     profile: Mapped["Profile"] = relationship(back_populates="documents")
@@ -353,4 +358,19 @@ class UserTitleSuggestion(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     profile_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     promoted: Mapped[bool] = mapped_column(Boolean, default=False)  # moved into occupations
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class SkillCatalog(Base):
+    """Curated skills from data/skills_curation/ drop folder."""
+
+    __tablename__ = "skill_catalog"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    name_normalized: Mapped[str] = mapped_column(String(120), index=True)
+    category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    aliases: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    source_file: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

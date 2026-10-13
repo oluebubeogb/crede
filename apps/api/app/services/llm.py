@@ -83,7 +83,8 @@ async def _openai_compatible_chat(
     if "openai.com" in base_url:
         body["response_format"] = {"type": "json_object"}
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    client_timeout = httpx.Timeout(timeout, connect=min(30.0, timeout), read=timeout, write=timeout, pool=timeout)
+    async with httpx.AsyncClient(timeout=client_timeout) as client:
         r = await client.post(url, headers=headers, json=body)
         if r.status_code >= 400:
             raise LLMError(f"LLM HTTP {r.status_code}: {r.text[:400]}")
@@ -119,7 +120,8 @@ async def _replicate_chat(
             "temperature": 0.2,
         }
     }
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    client_timeout = httpx.Timeout(timeout, connect=min(30.0, timeout), read=timeout, write=timeout, pool=timeout)
+    async with httpx.AsyncClient(timeout=client_timeout) as client:
         r = await client.post(create_url, headers=headers, json=payload)
         if r.status_code >= 400:
             # fallback: predictions with version field if model is a version hash

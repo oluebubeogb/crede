@@ -24,7 +24,8 @@ from app.routers import (
     occupations,
 )
 from app.services.storage import ensure_dirs
-from app.services.occupations_import import import_all
+from app.services.occupations_import import import_all as import_occupations
+from app.services.skills_import import import_all as import_skills
 from app.database import SessionLocal
 
 settings = get_settings()
@@ -100,6 +101,23 @@ def _try_schema() -> bool:
                 ).fetchone()
                 if not has:
                     conn.execute(text(ddl))
+        
+            for col, ddl in [
+                ("status", "ALTER TABLE generated_documents ADD COLUMN status VARCHAR(32) DEFAULT 'ready'"),
+                ("target_job_title", "ALTER TABLE generated_documents ADD COLUMN target_job_title VARCHAR(255)"),
+                ("target_organization", "ALTER TABLE generated_documents ADD COLUMN target_organization VARCHAR(255)"),
+                ("error_message", "ALTER TABLE generated_documents ADD COLUMN error_message TEXT"),
+            ]:
+                has = conn.execute(
+                    text(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_schema='public' AND table_name='generated_documents' AND column_name=:c"
+                    ),
+                    {"c": col},
+                ).fetchone()
+                if not has:
+                    conn.execute(text(ddl))
+
         _schema_ready = True
         _db_last_error = None
         logger.info("Database schema ready")
@@ -145,8 +163,10 @@ async def lifespan(app: FastAPI):
         try:
             db = SessionLocal()
             try:
-                result = import_all(db)
+                result = import_occupations(db)
                 logger.info("Occupations import: %s", result)
+                sresult = import_skills(db)
+                logger.info("Skills catalog import: %s", sresult)
             finally:
                 db.close()
         except Exception as e:
