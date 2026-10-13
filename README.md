@@ -64,6 +64,19 @@ npm run dev -- -p 3001
 
 Open http://localhost:3001 → **Sign up** → build timeline → Generate CV → download PDF/DOCX.
 
+Unauthenticated visits to `/dashboard`, `/generate`, and other app routes redirect to `/login` (homepage, `/login`, `/for-recruiters`, and public profiles `/u/...` stay public).
+
+### Seed test users
+
+With the API venv active and `DATABASE_URL` set:
+
+```bash
+cd apps/api
+python seed_data.py
+```
+
+Attaches career data to existing Collab accounts `c1@mova.cms` … `c5@mova.cms` (matched by email only — no local passwords, names, usernames, or phones). Includes timelines, skills, certifications, varied verification scores, plus sample orgs and open jobs. Log in via Collab; profile links on first login.
+
 ### Docker (API + Redis + Meili)
 
 ```bash
