@@ -178,6 +178,79 @@ async def unhandled_exception(request: Request, exc: Exception):
     )
 
 
+
+
+@app.get("/api/debug/llm")
+def debug_llm_config():
+    """Inspect LLM configuration (no secrets). Use to verify Coolify env vars landed."""
+    s = get_settings()
+    return {
+        "provider": s.llm_provider,
+        "enabled": s.llm_enabled,
+        "model": s.llm_model or None,
+        "base_url": s.llm_base_url or None,
+        "api_key_set": bool(s.llm_api_key),
+        "api_key_prefix": (s.llm_api_key[:6] + "…") if s.llm_api_key and len(s.llm_api_key) > 6 else None,
+        "timeout_seconds": s.llm_timeout_seconds,
+        "max_tokens": s.llm_max_tokens,
+        "legacy_openai_key_set": bool(s.openai_api_key),
+        "hint": (
+            "LLM is ready for live calls"
+            if s.llm_enabled
+            else "Set LLM_PROVIDER + LLM_API_KEY (or OPENAI_API_KEY) in Coolify and redeploy"
+        ),
+    }
+
+
+@app.post("/api/debug/llm/test")
+async def debug_llm_test():
+    """
+    Live ping: ask the configured model for a tiny JSON response.
+    Confirms API key, base URL, and model work end-to-end.
+    """
+    from app.services.llm import chat_json, LLMError
+
+    s = get_settings()
+    if not s.llm_enabled:
+        return {
+            "ok": False,
+            "error": "LLM disabled — set LLM_PROVIDER and LLM_API_KEY (or OPENAI_API_KEY)",
+            "config": {
+                "provider": s.llm_provider,
+                "api_key_set": bool(s.llm_api_key),
+                "model": s.llm_model,
+            },
+        }
+    try:
+        data = await chat_json(
+            system='Return JSON only: {"ok": true, "echo": "crede"}',
+            user="ping",
+            temperature=0,
+        )
+        return {
+            "ok": True,
+            "provider": s.llm_provider,
+            "model": s.llm_model,
+            "response": data,
+            "message": "LLM key and endpoint are working",
+        }
+    except LLMError as e:
+        return {
+            "ok": False,
+            "provider": s.llm_provider,
+            "model": s.llm_model,
+            "base_url": s.llm_base_url or None,
+            "error": str(e),
+            "message": "LLM call failed — check key, base URL, model id, and provider billing",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": f"{type(e).__name__}: {e}",
+            "message": "Unexpected error calling LLM",
+        }
+
+
 @app.get("/health")
 def health():
     db_ok = False
@@ -200,4 +273,11 @@ def health():
         "database": "ok" if db_ok else "error",
         "schema_ready": _schema_ready,
         "database_error": db_error,
+        "llm": {
+            "provider": settings.llm_provider,
+            "enabled": settings.llm_enabled,
+            "model": settings.llm_model or None,
+            "base_url_set": bool(settings.llm_base_url),
+            "api_key_set": bool(settings.llm_api_key),
+        },
     }

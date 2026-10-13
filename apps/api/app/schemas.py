@@ -131,6 +131,9 @@ class GenerateCVResponse(BaseModel):
     preview_html: Optional[str] = None
     download_pdf_url: Optional[str] = None
     download_docx_url: Optional[str] = None
+    # Debug: whether JD-tailored wording was applied
+    tailored: bool = False
+    tailor_mode: Optional[str] = None  # llm | heuristic_reorder | none
 
 
 class DocumentOut(BaseModel):

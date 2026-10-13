@@ -89,6 +89,8 @@ async def generate_cv(
         preview_html=None,
         download_pdf_url=f"/api/documents/{doc.id}/download.pdf" if doc.storage_key_pdf else None,
         download_docx_url=f"/api/documents/{doc.id}/download.docx" if doc.storage_key_docx else None,
+        tailored=bool(snapshot.get("tailored")),
+        tailor_mode=snapshot.get("tailor_mode"),
     )
 
 
