@@ -71,8 +71,11 @@ Unauthenticated visits to `/dashboard`, `/generate`, and other app routes redire
 With the API venv active and `DATABASE_URL` set:
 
 ```bash
-cd apps/api
-python seed_data.py
+# Local (from apps/api):
+python -m app.seed_data
+
+# Inside the running API container:
+python -m app.seed_data
 ```
 
 Attaches career data to existing Collab accounts `c1@mova.cms` … `c5@mova.cms` (matched by email only — no local passwords, names, usernames, or phones). Includes timelines, skills, certifications, varied verification scores, plus sample orgs and open jobs. Log in via Collab; profile links on first login.
