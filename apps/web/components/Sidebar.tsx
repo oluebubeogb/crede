@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { TextAction } from "@/components/ui/TextAction";
 
 const professionalNav = [
   { href: "/dashboard", label: "Home", icon: Home },
@@ -65,7 +66,7 @@ export function Sidebar() {
   return (
     <aside className="sticky top-0 z-40 flex h-screen w-sidebar shrink-0 flex-col border-r border-border bg-surface">
       <div className="flex h-16 shrink-0 items-center gap-2 border-b border-border px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-sm font-bold text-white">
+        <div className="flex h-8 w-8 items-center justify-center rounded-card bg-accent text-sm font-bold text-white">
           C
         </div>
         <span className="text-lg font-semibold tracking-tight">Crede</span>
@@ -83,7 +84,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-btn px-3 py-2.5 text-sm transition",
+                "flex items-center gap-3 rounded-card px-3 py-2.5 text-sm transition",
                 active ? "font-medium text-accent" : "text-muted nav-hover"
               )}
             >
@@ -93,7 +94,6 @@ export function Sidebar() {
           );
         })}
 
-        {/* Segment divider: space above line, then Recruiting title, then links */}
         <div className="mx-3 mt-5 border-t border-border pt-4">
           <p className="mb-2.5 text-xs font-medium uppercase tracking-wider text-muted">
             Recruiting
@@ -111,7 +111,7 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-btn px-3 py-2.5 text-sm transition",
+                  "flex items-center gap-3 rounded-card px-3 py-2.5 text-sm transition",
                   active ? "font-medium text-accent" : "text-muted nav-hover"
                 )}
               >
@@ -124,14 +124,15 @@ export function Sidebar() {
       </nav>
 
       <div className="shrink-0 border-t border-border p-3">
-        <button
+        <TextAction
           type="button"
+          variant="muted"
           onClick={toggleTheme}
-          className="flex w-full items-center gap-3 rounded-btn px-3 py-2.5 text-sm text-muted nav-hover"
+          className="flex w-full items-center gap-3 px-3 py-2.5 no-underline hover:no-underline"
         >
           {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           {dark ? "Light mode" : "Dark mode"}
-        </button>
+        </TextAction>
       </div>
     </aside>
   );

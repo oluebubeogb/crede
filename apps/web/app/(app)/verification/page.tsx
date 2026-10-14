@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import { api } from "@/lib/api";
+import { TextAction } from "@/components/ui/TextAction";
+import { CircleCheckbox } from "@/components/ui/CircleCheckbox";
 
 type VItem = {
   id: number;
@@ -13,12 +15,21 @@ type VItem = {
 };
 
 const LABELS: Record<string, string> = {
-  email: "Email",
-  phone: "Phone",
-  degree: "Degree",
+  email: "Email verified",
+  phone: "Phone verification",
+  degree: "Degree verification",
   certification: "Certification",
-  employment: "Employment",
+  employment: "Employment verification",
   organization: "Organization",
+};
+
+const ACTIONS: Record<string, string> = {
+  email: "Email is verified via account",
+  phone: "Verify phone",
+  degree: "Upload proof",
+  certification: "Add certification",
+  employment: "Upload proof or request employer confirmation",
+  organization: "Request organization confirmation",
 };
 
 export default function VerificationPage() {
@@ -27,7 +38,9 @@ export default function VerificationPage() {
   const [uploading, setUploading] = useState<string | null>(null);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const score = items.filter((i) => i.status === "approved").reduce((s, i) => s + (i.points || 0), 0);
+  const score = items
+    .filter((i) => i.status === "approved")
+    .reduce((s, i) => s + (i.points || 0), 0);
 
   const load = () =>
     api
@@ -57,93 +70,120 @@ export default function VerificationPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <h1 className="text-2xl font-semibold">Verification</h1>
-        <p className="mt-4 text-slate-500">Loading…</p>
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold tracking-tight">Verification</h1>
+        <p className="text-sm text-muted">Loading…</p>
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-3xl">
-      <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Verification</h1>
-      <p className="mt-1 text-slate-500">Increase trust by verifying your credentials.</p>
+    <div className="space-y-8 max-w-3xl">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight">Verification</h1>
+        <p className="mt-1 text-sm text-muted">
+          Trust is visible. Verify claims on your timeline and credentials to raise your score.
+        </p>
+      </header>
 
-      <div className="mt-8 flex items-center gap-6">
-        <div className="relative h-28 w-28">
+      {/* Large score */}
+      <div className="card flex flex-wrap items-center gap-6">
+        <div className="relative h-28 w-28 shrink-0">
           <svg className="h-28 w-28 -rotate-90" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="42" fill="none" stroke="#E2E8F0" strokeWidth="8" />
+            <circle cx="50" cy="50" r="42" fill="none" stroke="var(--border)" strokeWidth="8" />
             <circle
               cx="50"
               cy="50"
               r="42"
               fill="none"
-              stroke="#2563EB"
+              stroke="var(--accent)"
               strokeWidth="8"
               strokeLinecap="round"
-              strokeDasharray={`${(score / 100) * 264} 264`}
+              strokeDasharray={`${Math.min(score, 100) / 100 * 264} 264`}
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-bold text-slate-900 dark:text-white">{score}</span>
-            <span className="text-xs text-slate-400">/ 100</span>
+            <span className="text-2xl font-bold">{score}</span>
+            <span className="text-xs text-muted">/ 100</span>
           </div>
         </div>
         <div>
-          <p className="font-medium text-slate-800 dark:text-zinc-200">Trust score</p>
-          <p className="text-sm text-slate-500 mt-1">
-            Upload proof for employment, degree, or certifications. An admin reviews and approves.
+          <p className="font-medium">Verification Score</p>
+          <p className="mt-1 text-sm text-muted max-w-md">
+            Upload proof for employment, degree, or certifications. Reviews are handled carefully so every approved claim increases trust.
           </p>
         </div>
       </div>
 
-      <div className="mt-8 space-y-3">
-        {items.map((item) => (
-          <div
-            key={item.kind}
-            className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 flex items-center justify-between gap-4"
-          >
-            <div>
-              <p className="font-medium text-slate-900 dark:text-white">
-                {LABELS[item.kind] || item.kind}
-              </p>
-              <p className="text-sm text-slate-500 capitalize">
-                {item.status}
-                {item.status === "approved" ? ` · +${item.points} pts` : ""}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {item.document_key && (
-                <a
-                  href={`/backend/api/verification/files/${item.id}`}
-                  className="text-sm text-blue-600 hover:underline"
+      {/* Methods as circle rows */}
+      <div className="space-y-2">
+        <h2 className="text-sm font-medium uppercase tracking-wider text-muted">Verification methods</h2>
+        {items.map((item) => {
+          const approved = item.status === "approved";
+          const pending = item.status === "pending";
+          return (
+            <div key={item.kind} className="card flex flex-wrap items-center justify-between gap-4 py-4">
+              <div className="flex items-start gap-3 min-w-0">
+                <span
+                  className={`mt-0.5 text-base leading-none ${
+                    approved ? "text-success" : pending ? "text-warning" : "text-muted"
+                  }`}
+                  aria-hidden
                 >
-                  Download
-                </a>
-              )}
-              <input
-                type="file"
-                className="hidden"
-                ref={(el) => {
-                  fileRefs.current[item.kind] = el;
-                }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleUpload(item.kind, f);
-                }}
-              />
-              <button
-                type="button"
-                disabled={uploading === item.kind}
-                onClick={() => fileRefs.current[item.kind]?.click()}
-                className="h-10 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-medium disabled:opacity-50"
-              >
-                {uploading === item.kind ? "Uploading…" : item.document_key ? "Replace" : "Upload"}
-              </button>
+                  {approved ? "●" : "○"}
+                </span>
+                <div>
+                  <p className="text-sm font-medium">{LABELS[item.kind] || item.kind}</p>
+                  <p className="text-xs text-muted capitalize">
+                    {item.status}
+                    {approved ? ` · +${item.points} pts` : ""}
+                    {item.notes ? ` · ${item.notes}` : ""}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                {item.document_key && (
+                  <TextAction
+                    href={`/backend/api/verification/files/${item.id}`}
+                    variant="muted"
+                  >
+                    View document
+                  </TextAction>
+                )}
+                {!approved && item.kind !== "email" && (
+                  <>
+                    <input
+                      type="file"
+                      className="hidden"
+                      ref={(el) => {
+                        fileRefs.current[item.kind] = el;
+                      }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleUpload(item.kind, f);
+                      }}
+                    />
+                    <TextAction
+                      variant="primary"
+                      onClick={() => fileRefs.current[item.kind]?.click()}
+                      disabled={uploading === item.kind}
+                    >
+                      {uploading === item.kind
+                        ? "Uploading…"
+                        : ACTIONS[item.kind] || "Upload proof"}
+                    </TextAction>
+                  </>
+                )}
+                {approved && <span className="text-xs text-success">Complete</span>}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      <p className="text-xs text-muted">
+        All verification features are available to every user. There are no limits on requests.
+      </p>
     </div>
   );
 }

@@ -5,12 +5,12 @@ export default function ForRecruitersPage() {
     <div className="min-h-screen bg-background">
       <header className="mx-auto flex max-w-content items-center justify-between px-6 py-5">
         <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-sm font-bold text-white">
+          <div className="flex h-8 w-8 items-center justify-center rounded-card bg-accent text-sm font-bold text-white">
             C
           </div>
           <span className="text-lg font-semibold">Crede</span>
         </Link>
-        <Link href="/login" className="btn-primary text-sm">
+        <Link href="/login" className="text-action">
           Get started
         </Link>
       </header>
@@ -21,10 +21,10 @@ export default function ForRecruitersPage() {
           source of truth professionals maintain.
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-          <Link href="/login" className="btn-primary inline-flex">
+          <Link href="/login" className="text-action">
             Create recruiter account
           </Link>
-          <Link href="/recruiter/dashboard" className="btn-secondary inline-flex">
+          <Link href="/recruiter/dashboard" className="text-action-muted">
             Open recruiter portal
           </Link>
         </div>

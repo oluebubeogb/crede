@@ -150,7 +150,7 @@ export default function SettingsPage() {
               .
             </p>
           )}
-          <button type="button" className="btn-secondary" onClick={handleLogout}>
+          <button type="button" className="text-action-muted" onClick={handleLogout}>
             Sign out
           </button>
         </div>
@@ -182,7 +182,7 @@ export default function SettingsPage() {
           ))}
           <button
             type="button"
-            className="btn-primary"
+            className="text-action"
             disabled={saving}
             onClick={() => savePrefs(prefs)}
           >
@@ -225,7 +225,7 @@ export default function SettingsPage() {
           ))}
           <button
             type="button"
-            className="btn-primary"
+            className="text-action"
             disabled={saving}
             onClick={() => savePrefs(prefs)}
           >
@@ -259,7 +259,7 @@ export default function SettingsPage() {
               AUTH_MODE=local is primary; for production prefer Collab Accounts SSO.
             </p>
           )}
-          <button type="button" className="btn-secondary" onClick={handleLogout}>
+          <button type="button" className="text-action-muted" onClick={handleLogout}>
             Sign out of this device
           </button>
         </div>

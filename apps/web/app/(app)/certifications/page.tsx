@@ -65,11 +65,11 @@ export default function CertificationsPage() {
         <input className="input" placeholder="Name" required value={name} onChange={(e) => setName(e.target.value)} />
         <input className="input" placeholder="Issuer" value={issuer} onChange={(e) => setIssuer(e.target.value)} />
         <div className="flex gap-2">
-          <button type="submit" className="btn-primary">
+          <button type="submit" className="text-action">
             {editId ? "Save" : "Add certification"}
           </button>
           {editId && (
-            <button type="button" className="btn-secondary" onClick={() => { setEditId(null); setName(""); setIssuer(""); }}>
+            <button type="button" className="text-action-muted" onClick={() => { setEditId(null); setName(""); setIssuer(""); }}>
               Cancel
             </button>
           )}

@@ -80,7 +80,7 @@ export default function CandidatesPage() {
             <option value={50}>50+ score</option>
             <option value={70}>70+ score</option>
           </select>
-          <button type="button" className="btn-primary" onClick={search} disabled={loading}>
+          <button type="button" className="text-action" onClick={search} disabled={loading}>
             {loading ? "Searching…" : "Search"}
           </button>
         </div>
@@ -108,7 +108,7 @@ export default function CandidatesPage() {
                   <span className="text-muted">/100</span>
                 </div>
                 {c.username ? (
-                  <Link href={`/u/${c.username}`} className="btn-secondary text-sm">
+                  <Link href={`/u/${c.username}`} className="text-action-muted">
                     View profile
                   </Link>
                 ) : (

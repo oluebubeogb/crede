@@ -119,10 +119,10 @@ export default function DocumentEditPage() {
         <div className="flex flex-wrap gap-2">
           {doc.status === "ready" && (
             <>
-              <a href={`/backend/api/documents/${id}/download.pdf`} className="btn-secondary text-sm">
+              <a href={`/backend/api/documents/${id}/download.pdf`} className="text-action-muted">
                 PDF
               </a>
-              <a href={`/backend/api/documents/${id}/download.docx`} className="btn-secondary text-sm">
+              <a href={`/backend/api/documents/${id}/download.docx`} className="text-action-muted">
                 DOCX
               </a>
             </>
@@ -169,13 +169,13 @@ export default function DocumentEditPage() {
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          className="btn-primary"
+          className="text-action"
           disabled={saving || generating || !markdown}
           onClick={save}
         >
           {saving ? "Saving…" : "Save & re-render files"}
         </button>
-        <Link href="/documents" className="btn-secondary text-sm">
+        <Link href="/documents" className="text-action-muted">
           Back to list
         </Link>
       </div>

@@ -73,7 +73,7 @@ export default function JobMatchesPage() {
                   {m.profile?.verification_score ?? "—"}
                 </div>
                 {m.profile?.username && (
-                  <Link href={`/u/${m.profile.username}`} className="btn-secondary text-sm">
+                  <Link href={`/u/${m.profile.username}`} className="text-action-muted">
                     Profile
                   </Link>
                 )}

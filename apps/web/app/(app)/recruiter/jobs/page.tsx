@@ -78,7 +78,7 @@ export default function JobsPage() {
       {orgs.length === 0 ? (
         <div className="card text-center">
           <p className="text-muted">Create an organization first.</p>
-          <Link href="/recruiter/organizations" className="btn-primary mt-4 inline-flex">
+          <Link href="/recruiter/organizations" className="text-action">
             Organizations
           </Link>
         </div>
@@ -117,7 +117,7 @@ export default function JobsPage() {
               />
             </div>
             {error && <p className="text-sm text-danger">{error}</p>}
-            <button type="submit" className="btn-primary">
+            <button type="submit" className="text-action">
               Create job
             </button>
           </form>
@@ -132,10 +132,10 @@ export default function JobsPage() {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" className="btn-secondary text-sm" onClick={() => runMatches(j.id)}>
+                  <button type="button" className="text-action-muted" onClick={() => runMatches(j.id)}>
                     Run matching
                   </button>
-                  <Link href={`/recruiter/jobs/${j.id}/matches`} className="btn-primary text-sm">
+                  <Link href={`/recruiter/jobs/${j.id}/matches`} className="text-action">
                     Matches
                   </Link>
                 </div>

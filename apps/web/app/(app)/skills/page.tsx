@@ -112,13 +112,13 @@ export default function SkillsPage() {
           <option value="leadership">Leadership</option>
           <option value="industry">Industry</option>
         </select>
-        <button type="submit" className="btn-primary">
+        <button type="submit" className="text-action">
           {editId ? "Save" : "Add"}
         </button>
         {editId && (
           <button
             type="button"
-            className="btn-secondary"
+            className="text-action-muted"
             onClick={() => {
               setEditId(null);
               setName("");

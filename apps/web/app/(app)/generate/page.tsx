@@ -142,7 +142,7 @@ export default function GeneratePage() {
               <option value="minimal">Minimal</option>
             </select>
           </div>
-          <button type="submit" className="btn-primary" disabled={loading}>
+          <button type="submit" className="text-action" disabled={loading}>
             {loading
               ? status === "processing" || status === "pending"
                 ? "Generating in background…"
@@ -185,10 +185,10 @@ export default function GeneratePage() {
               )}
               {doc.status === "ready" && (
                 <div className="flex flex-wrap gap-2">
-                  <Link href={`/documents/${doc.id}`} className="btn-primary text-sm">
+                  <Link href={`/documents/${doc.id}`} className="text-action">
                     Open & edit
                   </Link>
-                  <Link href="/documents" className="btn-secondary text-sm">
+                  <Link href="/documents" className="text-action-muted">
                     All documents
                   </Link>
                 </div>

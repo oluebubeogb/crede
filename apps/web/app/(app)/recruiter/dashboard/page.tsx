@@ -76,7 +76,7 @@ export default function RecruiterDashboard() {
         ) : orgs.length === 0 ? (
           <div className="card text-center">
             <p className="text-muted">No organization yet.</p>
-            <Link href="/recruiter/organizations" className="btn-primary mt-4 inline-flex">
+            <Link href="/recruiter/organizations" className="text-action">
               Create organization
             </Link>
           </div>

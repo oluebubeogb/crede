@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { API, api, getSession } from "@/lib/api";
+import { TextAction } from "@/components/ui/TextAction";
 
 type Dashboard = {
   profile: {
@@ -50,13 +50,14 @@ export default function DashboardPage() {
         <p className="font-medium text-danger">{error}</p>
         {hint && <p className="text-sm text-muted">{hint}</p>}
         <p className="text-xs text-muted">API base: {API || "/backend"}</p>
-        <div className="flex flex-wrap gap-2 pt-2">
-          <Link href="/login" className="btn-primary">
-            Login
-          </Link>
-          <a href={healthHref} target="_blank" rel="noreferrer" className="btn-secondary">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-sm">
+          <TextAction href="/login" variant="primary">
+            Sign in
+          </TextAction>
+          <span className="text-muted">·</span>
+          <TextAction href={healthHref} variant="muted">
             Open API /health
-          </a>
+          </TextAction>
         </div>
       </div>
     );
@@ -67,6 +68,13 @@ export default function DashboardPage() {
   }
 
   const p = data.profile;
+  const nextAction =
+    data.timeline_count === 0
+      ? { href: "/timeline", label: "Add your first career entry" }
+      : p.verification_score < 30
+        ? { href: "/verification", label: "Raise your verification score" }
+        : { href: "/generate", label: "Generate a CV" };
+
   return (
     <div className="space-y-8">
       <div>
@@ -95,29 +103,42 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      <div className="card">
+        <p className="text-sm text-muted">Most important next step</p>
+        <TextAction href={nextAction.href} variant="primary" className="mt-2 text-base">
+          {nextAction.label} →
+        </TextAction>
+      </div>
+
       {data.recommended_actions?.length > 0 && (
         <section>
           <h2 className="mb-3 text-lg font-semibold">Recommended actions</h2>
           <ul className="space-y-2">
             {data.recommended_actions.map((a) => (
-              <li key={a} className="card text-sm">
-                {a}
+              <li key={a} className="card text-sm flex items-center justify-between gap-3">
+                <span>{a}</span>
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <Link href="/timeline" className="btn-primary">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <TextAction href="/timeline" variant="primary">
           Career Timeline
-        </Link>
-        <Link href="/generate" className="btn-secondary">
+        </TextAction>
+        <span className="text-muted">·</span>
+        <TextAction href="/generate" variant="secondary">
           Generate CV
-        </Link>
-        <Link href="/recruiter/dashboard" className="btn-secondary">
+        </TextAction>
+        <span className="text-muted">·</span>
+        <TextAction href="/verification" variant="secondary">
+          Verification
+        </TextAction>
+        <span className="text-muted">·</span>
+        <TextAction href="/recruiter/dashboard" variant="muted">
           Recruiter portal
-        </Link>
+        </TextAction>
       </div>
     </div>
   );

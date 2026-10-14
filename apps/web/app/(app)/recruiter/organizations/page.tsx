@@ -70,7 +70,7 @@ export default function OrganizationsPage() {
           <input className="input" value={industry} onChange={(e) => setIndustry(e.target.value)} />
         </div>
         {error && <p className="text-sm text-danger">{error}</p>}
-        <button type="submit" className="btn-primary" disabled={loading}>
+        <button type="submit" className="text-action" disabled={loading}>
           {loading ? "Creating…" : "Create"}
         </button>
       </form>

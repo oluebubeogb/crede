@@ -90,14 +90,14 @@ export default function DocumentsPage() {
           {selected.size > 0 && (
             <button
               type="button"
-              className="btn-secondary text-sm text-danger"
+              className="text-action-danger"
               disabled={busy}
               onClick={bulkDelete}
             >
               Delete selected ({selected.size})
             </button>
           )}
-          <Link href="/generate" className="btn-primary text-sm">
+          <Link href="/generate" className="text-action">
             Generate
           </Link>
         </div>
@@ -108,7 +108,7 @@ export default function DocumentsPage() {
       {!loading && items.length === 0 && (
         <div className="card text-center py-16">
           <p className="text-muted">Generate your first tailored CV or cover letter.</p>
-          <Link href="/generate" className="btn-primary mt-4 inline-flex">
+          <Link href="/generate" className="text-action">
             Go to Generate
           </Link>
         </div>
@@ -149,13 +149,13 @@ export default function DocumentsPage() {
                 )}
                 <p className="mt-2 text-xs text-muted">{new Date(d.created_at).toLocaleString()}</p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href={`/documents/${d.id}`} className="btn-primary text-sm">
+                  <Link href={`/documents/${d.id}`} className="text-action">
                     Open / Edit
                   </Link>
                   {d.status === "ready" && d.storage_key_pdf && (
                     <a
                       href={`/backend/api/documents/${d.id}/download.pdf`}
-                      className="btn-secondary text-sm"
+                      className="text-action-muted"
                     >
                       PDF
                     </a>
@@ -163,7 +163,7 @@ export default function DocumentsPage() {
                   {d.status === "ready" && d.storage_key_docx && (
                     <a
                       href={`/backend/api/documents/${d.id}/download.docx`}
-                      className="btn-secondary text-sm"
+                      className="text-action-muted"
                     >
                       DOCX
                     </a>
@@ -177,7 +177,7 @@ export default function DocumentsPage() {
             <div className="flex items-center justify-center gap-3 pt-2">
               <button
                 type="button"
-                className="btn-secondary text-sm"
+                className="text-action-muted"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
@@ -188,7 +188,7 @@ export default function DocumentsPage() {
               </span>
               <button
                 type="button"
-                className="btn-secondary text-sm"
+                className="text-action-muted"
                 disabled={page >= data.pages}
                 onClick={() => setPage((p) => p + 1)}
               >

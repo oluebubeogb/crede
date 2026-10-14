@@ -61,7 +61,7 @@ function LoginForm() {
 
   return (
     <div className="card w-full max-w-md">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-btn bg-accent text-lg font-bold text-white">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-card bg-accent text-lg font-bold text-white">
         C
       </div>
       <h1 className="mt-6 text-center text-2xl font-semibold">
@@ -73,10 +73,10 @@ function LoginForm() {
           : "Build your verified career timeline in minutes."}
       </p>
 
-      <div className="mt-6 flex rounded-btn border border-border p-1">
+      <div className="mt-6 flex rounded-card border border-border p-1">
         <button
           type="button"
-          className={`flex-1 rounded-btn py-2 text-sm font-medium transition ${
+          className={`flex-1 rounded-card py-2 text-sm font-medium transition ${
             mode === "login" ? "bg-accent text-white" : "text-muted"
           }`}
           onClick={() => {
@@ -88,7 +88,7 @@ function LoginForm() {
         </button>
         <button
           type="button"
-          className={`flex-1 rounded-btn py-2 text-sm font-medium transition ${
+          className={`flex-1 rounded-card py-2 text-sm font-medium transition ${
             mode === "signup" ? "bg-accent text-white" : "text-muted"
           }`}
           onClick={() => {
@@ -149,7 +149,7 @@ function LoginForm() {
           )}
         </div>
         {error && <p className="text-sm text-danger">{error}</p>}
-        <button type="submit" className="btn-primary w-full" disabled={loading}>
+        <button type="submit" className="text-action w-full" disabled={loading}>
           {loading
             ? mode === "signup"
               ? "Creating account…"

@@ -161,7 +161,7 @@ export default function ProfilePage() {
             onChange={(e) => setForm({ ...form, summary: e.target.value })}
           />
         </div>
-        <button type="submit" className="btn-primary">
+        <button type="submit" className="text-action">
           Save
         </button>
         {saved && <span className="ml-3 text-sm text-success">Saved</span>}

@@ -5,7 +5,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background">
       <header className="mx-auto flex max-w-content items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-sm font-bold text-white">
+          <div className="flex h-8 w-8 items-center justify-center rounded-card bg-accent text-sm font-bold text-white">
             C
           </div>
           <span className="text-lg font-semibold">Crede</span>
@@ -22,10 +22,10 @@ export default function LandingPage() {
           </a>
         </nav>
         <div className="flex items-center gap-3">
-          <Link href="/login" className="btn-secondary text-sm">
+          <Link href="/login" className="text-action-muted">
             Login
           </Link>
-          <Link href="/login" className="btn-primary text-sm">
+          <Link href="/login" className="text-action">
             Get Started
           </Link>
         </div>
@@ -40,10 +40,10 @@ export default function LandingPage() {
             Maintain your career timeline once. Generate recruiter-ready CVs forever.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/login" className="btn-primary">
+            <Link href="/login" className="text-action">
               Get Started
             </Link>
-            <Link href="/login" className="btn-secondary">
+            <Link href="/login" className="text-action-muted">
               View Demo
             </Link>
           </div>
