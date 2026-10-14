@@ -1,8 +1,10 @@
 """
-AI document generation — single LLM call → Markdown draft.
+AI document generation — single LLM call → clean Markdown draft.
 
 PDF/DOCX are rendered from the stored markdown (no second LLM call).
 Never write AI prose back into TimelineEntry / Profile as source of truth.
+Matching insights (skills gaps, keywords) stay in a separate JSON field —
+never inside the document body.
 """
 
 from __future__ import annotations
@@ -16,10 +18,18 @@ from typing import Any
 from app.config import get_settings
 from app.models import Profile
 from app.schemas import MatchingInsights
-from app.services.llm import LLMError, chat_json
+from app.services.llm import chat_json
 
 logger = logging.getLogger("crede.cv")
 settings = get_settings()
+
+# Headings that must never appear in the user-facing document
+_JUNK_SECTION_RE = re.compile(
+    r"(?im)^#{1,3}\s*("
+    r"required\s+skills?|missing\s+skills?|keywords?|suggested\s+experiences?|"
+    r"matching\s+insights?|job\s+analysis|gap\s+analysis|ats\s+keywords?"
+    r")\s*$"
+)
 
 
 def jd_hash(job_description: str) -> str:
@@ -32,7 +42,9 @@ def _facts_payload(profile: Profile) -> dict[str, Any]:
         "headline": profile.headline,
         "location": profile.location,
         "email": profile.email,
+        "phone": profile.phone,
         "summary": profile.summary,
+        "years_experience": profile.years_experience,
         "skills": [s.name for s in profile.skills],
         "certifications": [
             {"name": c.name, "issuer": c.issuer} for c in profile.certifications
@@ -50,6 +62,54 @@ def _facts_payload(profile: Profile) -> dict[str, Any]:
             for e in profile.timeline_entries
         ],
     }
+
+
+def sanitize_document_markdown(md: str, *, name: str | None = None) -> str:
+    """
+    Strip analysis junk the model sometimes appends, and ensure a name header exists.
+    """
+    if not md:
+        return md or ""
+
+    lines = md.replace("\r\n", "\n").split("\n")
+    out: list[str] = []
+    skipping = False
+    for line in lines:
+        if _JUNK_SECTION_RE.match(line.strip()):
+            skipping = True
+            continue
+        if skipping:
+            # stop skipping when a new top-level or ## section that is allowed starts
+            if re.match(r"(?im)^#{1,2}\s+\S", line) and not _JUNK_SECTION_RE.match(line.strip()):
+                skipping = False
+            else:
+                # also stop at sign-off duplicates like "Best regards" after junk
+                continue
+        out.append(line)
+
+    text = "\n".join(out).strip()
+
+    # Remove trailing repeated "Best regards" / double signatures after body
+    text = re.sub(
+        r"(?is)\n+(##\s*)?(Required Skills|Missing Skills|Keywords|Suggested Experiences).*$",
+        "",
+        text,
+    ).strip()
+
+    # Ensure document starts with the candidate's name as H1 when possible
+    if name and name.strip():
+        first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+        # If first heading is a job title (e.g. "# Senior Product Designer") without the name
+        if first.startswith("# "):
+            heading = first[2:].strip()
+            if name.lower() not in heading.lower() and len(heading) < 80:
+                # Prepend name block
+                rest = "\n".join(text.splitlines()[1:]).lstrip()
+                text = f"# {name}\n\n**{heading}**\n\n{rest}".strip()
+        elif not first.lower().startswith(name.split()[0].lower() if name.split() else ""):
+            text = f"# {name}\n\n{text}".strip()
+
+    return text.strip() + "\n"
 
 
 def _heuristic_insights(job_description: str) -> MatchingInsights:
@@ -74,47 +134,47 @@ def _heuristic_insights(job_description: str) -> MatchingInsights:
 
 
 def _markdown_from_facts(profile: Profile, doc_type: str) -> str:
-    """Fallback draft without LLM."""
+    """Professional fallback draft without LLM — still not a raw dump."""
     f = _facts_payload(profile)
-    lines = [f"# {f['name']}", ""]
+    name = f["name"]
+    lines = [f"# {name}", ""]
     if f.get("headline"):
         lines.append(f"**{f['headline']}**")
-    meta = " · ".join(x for x in [f.get("location"), f.get("email")] if x)
+    meta = " · ".join(x for x in [f.get("location"), f.get("email"), f.get("phone")] if x)
     if meta:
         lines.append(meta)
     lines.append("")
+
     if doc_type == "cover_letter":
-        lines.append("## Cover Letter")
-        lines.append("")
-        lines.append(
-            f"Dear Hiring Manager,\n\n"
-            f"I am writing to express interest in this role. "
-            f"With experience including "
-            + (", ".join(e["job_title"] for e in f["experience"][:3]) or "relevant work")
-            + ", I bring skills in "
-            + (", ".join(f["skills"][:8]) or "my field")
-            + ".\n\nSincerely,\n"
-            + str(f["name"])
-        )
+        roles = ", ".join(e["job_title"] for e in f["experience"][:2]) or "my career"
+        lines += [
+            "Dear Hiring Manager,",
+            "",
+            f"I am writing to express interest in this opportunity. "
+            f"My background includes {roles}, and I would welcome the chance to contribute.",
+            "",
+            f"Sincerely,\n{name}",
+        ]
         return "\n".join(lines)
 
     if f.get("summary"):
-        lines += ["## Summary", "", f["summary"], ""]
+        lines += ["## Professional Summary", "", str(f["summary"]), ""]
     if f.get("skills"):
-        lines += ["## Skills", "", ", ".join(f["skills"]), ""]
+        lines += ["## Core Skills", "", ", ".join(f["skills"]), ""]
     if f.get("experience"):
-        lines += ["## Experience", ""]
+        lines += ["## Professional Experience", ""]
         for e in f["experience"]:
             lines.append(f"### {e['job_title']} — {e['organization']}")
             lines.append(f"*{e['start']} – {e['end']}*")
             lines.append("")
-            if e.get("description"):
-                lines.append(e["description"])
-                lines.append("")
-            for a in (e.get("achievements") or [])[:6]:
-                lines.append(f"- {a}")
-            for r in (e.get("responsibilities") or [])[:4]:
-                lines.append(f"- {r}")
+            bullets = list(e.get("achievements") or [])[:5]
+            if not bullets and e.get("description"):
+                bullets = [e["description"]]
+            for b in bullets:
+                lines.append(f"- {b}")
+            for r in (e.get("responsibilities") or [])[:3]:
+                if r not in bullets:
+                    lines.append(f"- {r}")
             lines.append("")
     if f.get("certifications"):
         lines += ["## Certifications", ""]
@@ -123,7 +183,63 @@ def _markdown_from_facts(profile: Profile, doc_type: str) -> str:
             if c.get("issuer"):
                 line += f" — {c['issuer']}"
             lines.append(f"- {line}")
-    return "\n".join(lines)
+    return sanitize_document_markdown("\n".join(lines), name=name)
+
+
+def _cv_system_prompt() -> str:
+    return """You are an expert career writer for Crede. You produce ONE polished CV in Markdown.
+
+OUTPUT FORMAT — return a single JSON object with exactly these keys:
+{
+  "markdown": "<string — the full CV only>",
+  "required_skills": ["..."],
+  "keywords": ["..."],
+  "missing_skills": ["..."],
+  "suggested_experiences": ["..."]
+}
+
+CRITICAL RULES FOR "markdown":
+1. The CV document must contain ONLY content a hiring manager should read.
+2. NEVER include sections named Required Skills, Missing Skills, Keywords, Suggested Experiences, Matching Insights, or similar analysis blocks inside markdown.
+3. Put those analysis lists ONLY in the separate JSON keys (required_skills, keywords, etc.).
+4. Structure the CV as:
+   - # Full legal name (required first line)
+   - Optional one-line target headline aligned to the job (not a dump of old titles)
+   - Contact line: location · email · phone (use only facts provided)
+   - ## Professional Summary — 3–5 sentences tailored to THIS job description. Reframe the candidate's real background toward the target role; do not invent employers or degrees.
+   - ## Core Skills — a short, curated list (8–14 items) mixing real candidate skills with truthful rephrasing toward the JD. Never list tools the candidate has no evidence for.
+   - ## Professional Experience — for EACH role keep real title, employer, dates. Write 3–6 achievement-style bullets that emphasize impact (metrics when present in facts). Rephrase timeline wording to match the JD's vocabulary when the underlying work is the same (e.g. monitoring and evaluation → monitoring and analytics). Do NOT paste the timeline word-for-word. Prefer outcomes over duty lists.
+   - ## Certifications — only if present in facts
+5. Do not invent companies, job titles, dates, degrees, or metrics.
+6. Do not invent a design portfolio if the facts show engineering work — instead bridge honestly (e.g. systems thinking, cross-functional collaboration) without claiming design roles the person never held.
+7. No "Best regards" or letter sign-off on a CV.
+8. markdown must start with "# <candidate name>"."""
+
+
+def _cover_letter_system_prompt() -> str:
+    return """You are an expert career writer for Crede. You produce ONE polished cover letter in Markdown.
+
+OUTPUT FORMAT — return a single JSON object with exactly these keys:
+{
+  "markdown": "<string — the full cover letter only>",
+  "required_skills": ["..."],
+  "keywords": ["..."],
+  "missing_skills": ["..."],
+  "suggested_experiences": ["..."]
+}
+
+CRITICAL RULES FOR "markdown":
+1. The letter must contain ONLY what the candidate would send to a hiring manager.
+2. NEVER include Required Skills, Missing Skills, Keywords, Suggested Experiences, or any analysis sections inside markdown.
+3. Put analysis ONLY in the separate JSON keys.
+4. Structure:
+   - Optional: # Candidate full name
+   - Dear Hiring Manager, (or named contact if present in the JD)
+   - 3–5 short paragraphs: interest in the specific role/company, relevant evidence from real experience, why they fit, close with a call to action
+   - Sincerely, / candidate name
+5. Do not invent employers, titles, or achievements. Bridge honestly from their real history to the target role.
+6. No skill lists, keyword dumps, or "missing skills" anywhere in the letter body.
+7. Do not repeat the sign-off twice."""
 
 
 async def generate_document_markdown(
@@ -133,11 +249,11 @@ async def generate_document_markdown(
     template: str = "professional",
 ) -> dict[str, Any]:
     """
-    Single LLM call producing markdown + matching insights.
-    Returns snapshot ready for storage and PDF/DOCX render.
+    Single LLM call producing clean markdown + separate matching insights.
     """
     facts = _facts_payload(profile)
     owned = {s.lower() for s in facts["skills"]}
+    name = str(facts.get("name") or profile.email or "Candidate")
 
     if not settings.llm_enabled:
         insights = _heuristic_insights(job_description)
@@ -145,8 +261,8 @@ async def generate_document_markdown(
         md = _markdown_from_facts(profile, doc_type)
         return {
             "markdown": md,
-            "name": facts["name"],
-            "email": facts["email"],
+            "name": name,
+            "email": facts.get("email"),
             "headline": facts.get("headline"),
             "location": facts.get("location"),
             "template": template,
@@ -156,48 +272,24 @@ async def generate_document_markdown(
             "tailor_mode": "heuristic",
         }
 
-    if doc_type == "cover_letter":
-        system = (
-            "You write professional cover letters. Return JSON only with keys:\n"
-            "  markdown (string: full cover letter in Markdown),\n"
-            "  required_skills (string[]),\n"
-            "  keywords (string[]),\n"
-            "  missing_skills (string[] relative to candidate skills),\n"
-            "  suggested_experiences (string[]).\n"
-            "Rules: use only real employers/titles/dates from candidate facts; "
-            "align language with the job description; do not invent metrics."
-        )
-    else:
-        system = (
-            "You write tailored professional CVs in Markdown. Return JSON only with keys:\n"
-            "  markdown (string: full CV in Markdown with sections Summary, Skills, Experience, Certifications),\n"
-            "  required_skills (string[] from the job),\n"
-            "  keywords (string[]),\n"
-            "  missing_skills (string[] candidate lacks),\n"
-            "  suggested_experiences (string[]).\n"
-            "Rules:\n"
-            "- Ground every bullet in candidate facts (employers, titles, dates, real achievements).\n"
-            "- Rephrase using the job description's vocabulary when the work is equivalent "
-            "(e.g. 'monitoring and evaluation' → 'monitoring and analytics' if JD uses that).\n"
-            "- Reorder skills and roles for relevance; keep all real roles.\n"
-            "- Do not invent companies, titles, tools, or numbers."
-        )
-
+    system = _cover_letter_system_prompt() if doc_type == "cover_letter" else _cv_system_prompt()
     user = (
-        f"JOB DESCRIPTION:\n{job_description[:5000]}\n\n"
-        f"CANDIDATE FACTS:\n{json.dumps(facts, ensure_ascii=False)[:12000]}"
+        f"TARGET JOB DESCRIPTION:\n{job_description[:5000]}\n\n"
+        f"CANDIDATE FACTS (source of truth — do not invent beyond this):\n"
+        f"{json.dumps(facts, ensure_ascii=False)[:12000]}\n\n"
+        f"Remember: markdown = document only. Analysis fields = separate JSON keys only."
     )
 
     try:
-        data = await chat_json(system, user, temperature=0.25)
+        data = await chat_json(system, user, temperature=0.35)
         insights = MatchingInsights(
             required_skills=list(data.get("required_skills") or [])[:20],
             missing_skills=list(data.get("missing_skills") or [])[:20],
             suggested_experiences=list(data.get("suggested_experiences") or [])[:10],
             keywords=list(data.get("keywords") or [])[:30],
         )
-        md = (data.get("markdown") or "").strip()
-        if not md:
+        md = sanitize_document_markdown(str(data.get("markdown") or "").strip(), name=name)
+        if not md or len(md) < 80:
             md = _markdown_from_facts(profile, doc_type)
             mode = "llm_empty_fallback"
             tailored = False
@@ -214,8 +306,8 @@ async def generate_document_markdown(
 
     return {
         "markdown": md,
-        "name": facts["name"],
-        "email": facts["email"],
+        "name": name,
+        "email": facts.get("email"),
         "headline": facts.get("headline"),
         "location": facts.get("location"),
         "template": template,
@@ -226,7 +318,7 @@ async def generate_document_markdown(
     }
 
 
-# Back-compat aliases used by older imports
+# Back-compat
 async def analyze_job_description(job_description: str) -> MatchingInsights:
     return _heuristic_insights(job_description)
 
