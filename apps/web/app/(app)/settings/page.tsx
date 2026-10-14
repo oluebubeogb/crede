@@ -102,7 +102,7 @@ export default function SettingsPage() {
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`rounded-btn px-3 py-2 text-sm transition ${
+            className={`rounded-card px-3 py-2 text-sm transition ${
               tab === t.id
                 ? "bg-accent font-medium text-white"
                 : "text-muted nav-hover"
@@ -283,7 +283,7 @@ export default function SettingsPage() {
       {tab === "connected" && (
         <div className="card space-y-4">
           <h2 className="font-semibold">Connected apps</h2>
-          <div className="flex items-center justify-between rounded-btn border border-border px-4 py-3">
+          <div className="flex items-center justify-between rounded-card border border-border px-4 py-3">
             <div>
               <p className="text-sm font-medium">Collab Accounts</p>
               <p className="text-xs text-muted">

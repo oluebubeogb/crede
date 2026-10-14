@@ -65,6 +65,10 @@ export default function TimelinePage() {
   const [titleHints, setTitleHints] = useState<Occ[]>([]);
   const [occDetail, setOccDetail] = useState<Occ | null>(null);
   const [saving, setSaving] = useState(false);
+  const [suggestion, setSuggestion] = useState<{ entryId: number; text: string } | null>(null);
+  const [endorseId, setEndorseId] = useState<number | null>(null);
+  const [endorseNote, setEndorseNote] = useState("");
+  const [endorsed, setEndorsed] = useState<Set<number>>(new Set());
 
   function load() {
     api<Entry[]>("/api/timeline")
@@ -196,7 +200,7 @@ export default function TimelinePage() {
       </header>
 
       {error && (
-        <div className="rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+        <div className="rounded-card border border-danger bg-surface px-4 py-3 text-sm text-danger">
           {error}
         </div>
       )}
@@ -266,6 +270,56 @@ export default function TimelinePage() {
                 </div>
               )}
 
+              {/* Smart assistance */}
+              {(!entry.achievements || entry.achievements.length === 0) && (
+                <div className="mt-3 rounded-card border border-border bg-background px-3 py-2 text-sm">
+                  <p className="text-muted">
+                    Suggested: This role has no quantified impact. Add metrics?
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <TextAction variant="primary" onClick={() => openEdit(entry)}>
+                      Accept & edit
+                    </TextAction>
+                    <span className="text-muted">·</span>
+                    <TextAction variant="muted" onClick={() => {}}>
+                      Dismiss
+                    </TextAction>
+                  </div>
+                </div>
+              )}
+
+              {endorseId === entry.id && (
+                <div className="mt-3 rounded-card border border-border bg-background p-3 space-y-2">
+                  <p className="text-sm font-medium">Request peer endorsement</p>
+                  <textarea
+                    className="input min-h-[60px] py-2 text-sm"
+                    placeholder="Short note for your endorser (optional)"
+                    value={endorseNote}
+                    onChange={(e) => setEndorseNote(e.target.value)}
+                  />
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                    <TextAction
+                      variant="primary"
+                      onClick={() => {
+                        setEndorsed((s) => new Set(s).add(entry.id));
+                        setEndorseId(null);
+                        setEndorseNote("");
+                      }}
+                    >
+                      Send request
+                    </TextAction>
+                    <span className="text-muted">·</span>
+                    <TextAction variant="muted" onClick={() => setEndorseId(null)}>
+                      Cancel
+                    </TextAction>
+                  </div>
+                </div>
+              )}
+
+              {endorsed.has(entry.id) && (
+                <p className="mt-2 text-xs text-success">● Endorsement requested — raises verification score when accepted</p>
+              )}
+
               <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                 <TextAction
                   variant="muted"
@@ -280,6 +334,10 @@ export default function TimelinePage() {
                 <span className="text-muted">·</span>
                 <TextAction href="/verification" variant="primary">
                   Request verification
+                </TextAction>
+                <span className="text-muted">·</span>
+                <TextAction variant="secondary" onClick={() => setEndorseId(entry.id)}>
+                  Request endorsement
                 </TextAction>
                 <span className="text-muted">·</span>
                 <TextAction variant="danger" onClick={() => handleDelete(entry.id)}>

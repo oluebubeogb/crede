@@ -10,6 +10,7 @@ type Dashboard = {
     headline?: string;
     verification_score: number;
     profile_completion: number;
+    industry?: string;
   };
   timeline_count: number;
   verified_docs: number;
@@ -73,7 +74,22 @@ export default function DashboardPage() {
       ? { href: "/timeline", label: "Add your first career entry" }
       : p.verification_score < 30
         ? { href: "/verification", label: "Raise your verification score" }
-        : { href: "/generate", label: "Generate a CV" };
+        : { href: "/opportunities", label: "Browse matched opportunities" };
+
+  const insights: string[] = [];
+  if (data.timeline_count >= 2) {
+    insights.push(
+      "Professionals with similar verified timelines typically move into senior or cross-functional roles within 18–24 months."
+    );
+  }
+  if (p.verification_score >= 40) {
+    insights.push("Your verification score is competitive — recruiters filter for verified claims first.");
+  } else if (data.timeline_count > 0) {
+    insights.push("Adding employment proof for your latest role is the highest-leverage next step for trust.");
+  }
+  if (data.generated_cvs === 0 && data.timeline_count > 0) {
+    insights.push("You have timeline data ready — generate a tailored CV for an open role in one step.");
+  }
 
   return (
     <div className="space-y-8">
@@ -110,13 +126,26 @@ export default function DashboardPage() {
         </TextAction>
       </div>
 
+      {insights.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold">Career insights</h2>
+          <ul className="space-y-2">
+            {insights.map((insight) => (
+              <li key={insight} className="card text-sm text-muted">
+                {insight}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {data.recommended_actions?.length > 0 && (
         <section>
           <h2 className="mb-3 text-lg font-semibold">Recommended actions</h2>
           <ul className="space-y-2">
             {data.recommended_actions.map((a) => (
-              <li key={a} className="card text-sm flex items-center justify-between gap-3">
-                <span>{a}</span>
+              <li key={a} className="card text-sm">
+                {a}
               </li>
             ))}
           </ul>
@@ -128,11 +157,15 @@ export default function DashboardPage() {
           Career Timeline
         </TextAction>
         <span className="text-muted">·</span>
+        <TextAction href="/opportunities" variant="secondary">
+          Opportunities
+        </TextAction>
+        <span className="text-muted">·</span>
         <TextAction href="/generate" variant="secondary">
           Generate CV
         </TextAction>
         <span className="text-muted">·</span>
-        <TextAction href="/verification" variant="secondary">
+        <TextAction href="/verification" variant="muted">
           Verification
         </TextAction>
         <span className="text-muted">·</span>

@@ -181,6 +181,36 @@ export default function VerificationPage() {
         })}
       </div>
 
+      <div className="card space-y-2">
+        <p className="text-sm font-medium">Portability</p>
+        <p className="text-xs text-muted">
+          Export a shareable verification summary. Useful for applications and external proof.
+        </p>
+        <TextAction
+          variant="primary"
+          onClick={() => {
+            const summary = {
+              score,
+              items: items.map((i) => ({
+                kind: i.kind,
+                status: i.status,
+                points: i.points,
+              })),
+              exported_at: new Date().toISOString(),
+            };
+            const blob = new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "crede-verification-proof.json";
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          Export verification proof
+        </TextAction>
+      </div>
+
       <p className="text-xs text-muted">
         All verification features are available to every user. There are no limits on requests.
       </p>

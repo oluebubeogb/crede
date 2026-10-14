@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { TextAction } from "@/components/ui/TextAction";
 
 type Org = { id: number; name: string };
 type Job = {
@@ -78,7 +79,7 @@ export default function JobsPage() {
       {orgs.length === 0 ? (
         <div className="card text-center">
           <p className="text-muted">Create an organization first.</p>
-          <Link href="/recruiter/organizations" className="text-action">
+          <Link href="/recruiter/organizations" className="text-sm font-medium text-accent underline-offset-4 hover:underline">
             Organizations
           </Link>
         </div>
@@ -117,7 +118,7 @@ export default function JobsPage() {
               />
             </div>
             {error && <p className="text-sm text-danger">{error}</p>}
-            <button type="submit" className="text-action">
+            <button type="submit" className="text-action font-medium text-accent underline-offset-4 hover:underline">
               Create job
             </button>
           </form>
@@ -132,10 +133,10 @@ export default function JobsPage() {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" className="text-action-muted" onClick={() => runMatches(j.id)}>
+                  <button type="button" className="text-sm text-muted hover:text-foreground underline-offset-4 hover:underline" onClick={() => runMatches(j.id)}>
                     Run matching
                   </button>
-                  <Link href={`/recruiter/jobs/${j.id}/matches`} className="text-action">
+                  <Link href={`/recruiter/jobs/${j.id}/matches`} className="text-sm font-medium text-accent underline-offset-4 hover:underline">
                     Matches
                   </Link>
                 </div>

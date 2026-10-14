@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { api } from "@/lib/api";
 import { Search, ShieldCheck } from "lucide-react";
+import { TextAction } from "@/components/ui/TextAction";
+import { CircleCheckbox } from "@/components/ui/CircleCheckbox";
 
 type Candidate = {
   id: number;
@@ -17,12 +18,20 @@ type Candidate = {
   match_score?: number;
 };
 
+const VER_FILTERS = [
+  { value: 0, label: "Any score" },
+  { value: 20, label: "20+" },
+  { value: 50, label: "50+" },
+  { value: 70, label: "70+" },
+];
+
 export default function CandidatesPage() {
   const [q, setQ] = useState("");
   const [industry, setIndustry] = useState("");
   const [minVer, setMinVer] = useState(0);
   const [results, setResults] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(false);
+  const [shortlist, setShortlist] = useState<Set<number>>(new Set());
 
   async function search() {
     setLoading(true);
@@ -45,12 +54,23 @@ export default function CandidatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function toggleShortlist(id: number) {
+    setShortlist((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
-    <div className="mx-auto max-w-content space-y-6 p-8">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Candidates</h1>
-        <p className="mt-1 text-muted">Search verified professional identities.</p>
-      </div>
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight">Candidates</h1>
+        <p className="mt-1 text-sm text-muted">
+          Unlimited search across verified professional identities. Filter by verification score.
+        </p>
+      </header>
 
       <div className="card space-y-4">
         <div className="flex flex-wrap gap-3">
@@ -70,29 +90,41 @@ export default function CandidatesPage() {
             value={industry}
             onChange={(e) => setIndustry(e.target.value)}
           />
-          <select
-            className="input w-44"
-            value={minVer}
-            onChange={(e) => setMinVer(Number(e.target.value))}
-          >
-            <option value={0}>Any verification</option>
-            <option value={20}>20+ score</option>
-            <option value={50}>50+ score</option>
-            <option value={70}>70+ score</option>
-          </select>
-          <button type="button" className="text-action" onClick={search} disabled={loading}>
-            {loading ? "Searching…" : "Search"}
-          </button>
+        </div>
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">
+            Minimum verification score
+          </p>
+          <div className="flex flex-wrap gap-4">
+            {VER_FILTERS.map((f) => (
+              <CircleCheckbox
+                key={f.value}
+                checked={minVer === f.value}
+                onChange={() => setMinVer(f.value)}
+                label={f.label}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <TextAction type="button" variant="primary" onClick={search} disabled={loading}>
+            {loading ? "Searching…" : "Search candidates"}
+          </TextAction>
         </div>
       </div>
 
       {results.length === 0 && !loading ? (
-        <div className="card text-center text-muted">No candidates match your filters.</div>
+        <div className="card flex flex-col items-start gap-2">
+          <p className="text-sm text-muted">No candidates match your filters.</p>
+          <TextAction variant="muted" onClick={() => { setQ(""); setIndustry(""); setMinVer(0); search(); }}>
+            Clear filters
+          </TextAction>
+        </div>
       ) : (
         <div className="grid gap-3">
           {results.map((c) => (
-            <div key={c.id} className="card flex flex-wrap items-center justify-between gap-4">
-              <div>
+            <article key={c.id} className="card flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
                 <p className="font-medium">{c.full_name || "Unnamed"}</p>
                 <p className="text-sm text-muted">{c.headline}</p>
                 <p className="mt-1 text-xs text-muted">
@@ -100,22 +132,38 @@ export default function CandidatesPage() {
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
+                {c.match_score != null && (
+                  <p className="mt-1 text-xs text-accent">Match {Math.round(c.match_score)}%</p>
+                )}
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col items-end gap-2">
                 <div className="flex items-center gap-1.5 text-sm">
                   <ShieldCheck className="h-4 w-4 text-success" />
                   <span className="font-medium">{c.verification_score}</span>
                   <span className="text-muted">/100</span>
                 </div>
-                {c.username ? (
-                  <Link href={`/u/${c.username}`} className="text-action-muted">
-                    View profile
-                  </Link>
-                ) : (
-                  <span className="text-xs text-muted">No public URL</span>
-                )}
+                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-sm">
+                  {c.username ? (
+                    <TextAction href={`/u/${c.username}`} variant="primary">
+                      View full profile
+                    </TextAction>
+                  ) : (
+                    <span className="text-xs text-muted">No public URL</span>
+                  )}
+                  <span className="text-muted">·</span>
+                  <TextAction
+                    variant={shortlist.has(c.id) ? "muted" : "secondary"}
+                    onClick={() => toggleShortlist(c.id)}
+                  >
+                    {shortlist.has(c.id) ? "● On shortlist" : "Add to shortlist"}
+                  </TextAction>
+                  <span className="text-muted">·</span>
+                  <TextAction href="/verification" variant="muted">
+                    Request more verification
+                  </TextAction>
+                </div>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}

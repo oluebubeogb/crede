@@ -27,7 +27,7 @@ export default function RecruiterDashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Link href="/recruiter/candidates" className="card flex items-center gap-4 transition hover:border-accent">
-          <div className="flex h-10 w-10 items-center justify-center rounded-btn bg-accent/10 text-accent">
+          <div className="flex h-10 w-10 items-center justify-center rounded-card bg-surface text-accent">
             <Search className="h-5 w-5" />
           </div>
           <div>
@@ -36,7 +36,7 @@ export default function RecruiterDashboard() {
           </div>
         </Link>
         <Link href="/recruiter/jobs" className="card flex items-center gap-4 transition hover:border-accent">
-          <div className="flex h-10 w-10 items-center justify-center rounded-btn bg-accent/10 text-accent">
+          <div className="flex h-10 w-10 items-center justify-center rounded-card bg-surface text-accent">
             <Briefcase className="h-5 w-5" />
           </div>
           <div>
@@ -45,7 +45,7 @@ export default function RecruiterDashboard() {
           </div>
         </Link>
         <Link href="/recruiter/organizations" className="card flex items-center gap-4 transition hover:border-accent">
-          <div className="flex h-10 w-10 items-center justify-center rounded-btn bg-accent/10 text-accent">
+          <div className="flex h-10 w-10 items-center justify-center rounded-card bg-surface text-accent">
             <Building2 className="h-5 w-5" />
           </div>
           <div>
@@ -54,7 +54,7 @@ export default function RecruiterDashboard() {
           </div>
         </Link>
         <div className="card flex items-center gap-4 opacity-60">
-          <div className="flex h-10 w-10 items-center justify-center rounded-btn bg-surface text-muted">
+          <div className="flex h-10 w-10 items-center justify-center rounded-card bg-surface text-muted">
             <Users className="h-5 w-5" />
           </div>
           <div>

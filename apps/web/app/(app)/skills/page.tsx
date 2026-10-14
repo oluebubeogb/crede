@@ -90,7 +90,7 @@ export default function SkillsPage() {
                 <li key={h.id}>
                   <button
                     type="button"
-                    className="w-full px-3 py-2 text-left hover:bg-accent/10"
+                    className="w-full px-3 py-2 text-left hover:bg-surface"
                     onClick={() => {
                       setName(h.name);
                       if (h.category) setCategory(h.category);

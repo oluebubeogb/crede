@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { TextAction } from "@/components/ui/TextAction";
 import { api } from "@/lib/api";
 import { ShieldCheck } from "lucide-react";
 
@@ -73,7 +74,7 @@ export default function JobMatchesPage() {
                   {m.profile?.verification_score ?? "—"}
                 </div>
                 {m.profile?.username && (
-                  <Link href={`/u/${m.profile.username}`} className="text-action-muted">
+                  <Link href={`/u/${m.profile.username}`} className="text-sm text-muted hover:text-foreground underline-offset-4 hover:underline">
                     Profile
                   </Link>
                 )}
