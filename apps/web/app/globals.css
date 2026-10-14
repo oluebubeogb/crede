@@ -34,7 +34,6 @@ body {
 }
 
 @layer components {
-  /* Soft card surface — Phase 1 design system */
   .card {
     @apply rounded-card border border-border bg-surface p-5;
   }
@@ -60,7 +59,6 @@ body {
     background-color: color-mix(in srgb, var(--border) 60%, transparent);
   }
 
-  /* Text action helpers (kept for any residual class usage) */
   .text-action {
     @apply text-sm font-medium text-accent underline-offset-4 hover:underline cursor-pointer transition-colors;
   }
@@ -68,11 +66,15 @@ body {
     @apply text-sm text-muted hover:text-foreground underline-offset-4 hover:underline cursor-pointer transition-colors;
   }
   .text-action-danger {
-    @apply text-sm text-danger/90 hover:text-danger underline-offset-4 hover:underline cursor-pointer transition-colors;
+    @apply text-sm text-danger hover:underline underline-offset-4 cursor-pointer transition-colors;
+    opacity: 0.9;
+  }
+  .text-action-danger:hover {
+    opacity: 1;
   }
 
-  /* Soft progress / verification score ring helpers */
   .score-ring {
-    @apply relative flex items-center justify-center rounded-full border-2 border-accent/20;
+    @apply relative flex items-center justify-center rounded-full;
+    border: 2px solid color-mix(in srgb, var(--accent) 20%, transparent);
   }
 }

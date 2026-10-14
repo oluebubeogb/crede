@@ -57,8 +57,8 @@ export function CircleCheckbox({
         onKeyDown={handleKeyDown}
         className={cn(
           "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-base leading-none transition-colors",
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          checked ? "text-accent" : "text-muted group-hover:text-foreground/70"
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          checked ? "text-accent" : "text-muted group-hover:text-foreground"
         )}
       >
         {checked ? "●" : "○"}

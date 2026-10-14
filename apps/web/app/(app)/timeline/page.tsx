@@ -242,11 +242,11 @@ export default function TimelinePage() {
 
               {isExpanded && (
                 <div className="mt-4 space-y-3 border-t border-border pt-4 text-sm">
-                  {entry.description && <p className="text-foreground/90">{entry.description}</p>}
+                  {entry.description && <p className="text-foreground">{entry.description}</p>}
                   {entry.responsibilities && entry.responsibilities.length > 0 && (
                     <div>
                       <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">Responsibilities</p>
-                      <ul className="list-inside list-disc space-y-0.5 text-foreground/90">
+                      <ul className="list-inside list-disc space-y-0.5 text-foreground">
                         {entry.responsibilities.map((r, i) => (
                           <li key={i}>{r}</li>
                         ))}
@@ -256,7 +256,7 @@ export default function TimelinePage() {
                   {entry.achievements && entry.achievements.length > 0 && (
                     <div>
                       <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">Achievements</p>
-                      <ul className="list-inside list-disc space-y-0.5 text-foreground/90">
+                      <ul className="list-inside list-disc space-y-0.5 text-foreground">
                         {entry.achievements.map((a, i) => (
                           <li key={i}>{a}</li>
                         ))}

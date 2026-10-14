@@ -9,8 +9,8 @@ type Variant = "primary" | "muted" | "danger" | "secondary";
 const variantClasses: Record<Variant, string> = {
   primary: "text-accent underline-offset-4 hover:underline focus-visible:underline font-medium",
   muted: "text-muted hover:text-foreground underline-offset-4 hover:underline focus-visible:underline",
-  danger: "text-danger/90 hover:text-danger underline-offset-4 hover:underline focus-visible:underline",
-  secondary: "text-foreground/80 hover:text-foreground underline-offset-4 hover:underline focus-visible:underline",
+  danger: "text-danger opacity-90 hover:opacity-100 underline-offset-4 hover:underline focus-visible:underline",
+  secondary: "text-foreground opacity-80 hover:opacity-100 underline-offset-4 hover:underline focus-visible:underline",
 };
 
 type BaseProps = {
@@ -45,7 +45,7 @@ export function TextAction({
 }: TextActionProps) {
   const classes = cn(
     "inline-flex items-center gap-1 text-sm transition-colors cursor-pointer select-none",
-    "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
+    "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
     variantClasses[variant],
     disabled && "opacity-50 pointer-events-none cursor-not-allowed",
     className
