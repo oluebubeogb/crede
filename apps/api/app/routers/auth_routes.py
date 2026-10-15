@@ -126,7 +126,14 @@ async def logout(response: Response):
 
 
 @router.get("/me")
-async def me(auth: AuthUser = Depends(get_current_user)):
+async def me(response: Response, auth: AuthUser = Depends(get_current_user)):
+    """Return current user and slide the session cookie forward so active users stay signed in."""
+    if auth.source == "local" and auth.id.startswith("local:"):
+        token = create_access_token(
+            auth.id,
+            extra={"email": auth.email, "role": auth.role or "professional"},
+        )
+        set_access_cookie(response, token)
     return {
         "id": auth.id,
         "email": auth.email,

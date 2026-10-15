@@ -29,7 +29,9 @@ settings = get_settings()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_DAYS = 7
+# Long-lived sessions so users are not signed out frequently.
+# Explicit sign-out remains available on Settings.
+ACCESS_TOKEN_EXPIRE_DAYS = 90
 
 
 # ─── Password helpers ───────────────────────────────────────────────────────

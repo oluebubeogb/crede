@@ -1,13 +1,20 @@
 "use client";
 
+import { useEffect } from "react";
 import { Sidebar } from "./Sidebar";
 import { SearchBar } from "./SearchBar";
+import { getSession } from "@/lib/api";
 
 /**
  * Two-column shell: collapsible sidebar + fluid main with global search bar.
  * Uses flex so content never sits under the sidebar.
+ * Silently refreshes the session cookie on mount so active users stay signed in.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    getSession().catch(() => {});
+  }, []);
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
