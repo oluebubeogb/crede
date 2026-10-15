@@ -28,6 +28,7 @@ const config: Config = {
       },
       width: {
         sidebar: "280px",
+        "sidebar-collapsed": "72px",
       },
       height: {
         btn: "44px",
