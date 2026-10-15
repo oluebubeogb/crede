@@ -74,6 +74,7 @@ class SkillIn(BaseModel):
     name: str
     category: str = "technical"
     proficiency: Optional[str] = None
+    acquired_at: Optional[date] = None
 
 
 class SkillOut(SkillIn):

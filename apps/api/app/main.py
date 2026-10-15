@@ -118,6 +118,16 @@ def _try_schema() -> bool:
                 if not has:
                     conn.execute(text(ddl))
 
+            # Skills: date acquired / started
+            has_skill_date = conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_schema='public' AND table_name='skills' AND column_name='acquired_at'"
+                )
+            ).fetchone()
+            if not has_skill_date:
+                conn.execute(text("ALTER TABLE skills ADD COLUMN acquired_at DATE"))
+
         _schema_ready = True
         _db_last_error = None
         logger.info("Database schema ready")

@@ -30,21 +30,54 @@ type TimelineEntry = {
   is_current?: boolean;
 };
 
-/* ── Circular progress (profile completion) ─────────────────────────────── */
-function CircularProgress({
+type Skill = {
+  id: number;
+  name: string;
+  acquired_at?: string | null;
+  created_at?: string;
+};
+
+type Cert = {
+  id: number;
+  name: string;
+  issued_at?: string | null;
+  created_at?: string;
+};
+
+type Doc = {
+  id: number;
+  title: string;
+  doc_type: string;
+  created_at: string;
+  target_job_title?: string | null;
+};
+
+type ActivityPoint = {
+  id: string;
+  date: Date;
+  label: string;
+  kind: "career" | "skill" | "cert" | "cv";
+  detail?: string;
+};
+
+function CircularMetric({
   value,
-  size = 120,
-  stroke = 10,
+  max = 100,
+  size = 128,
+  stroke = 11,
   label,
+  display,
 }: {
   value: number;
+  max?: number;
   size?: number;
   stroke?: number;
   label: string;
+  display?: string;
 }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const pct = Math.min(100, Math.max(0, value));
+  const pct = Math.min(100, Math.max(0, (value / max) * 100));
   const offset = c - (pct / 100) * c;
   const color =
     pct >= 80 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct >= 25 ? "#f59e0b" : "#ef4444";
@@ -77,7 +110,7 @@ function CircularProgress({
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-2xl font-semibold tabular-nums" style={{ color }}>
-            {pct}%
+            {display ?? `${Math.round(pct)}%`}
           </span>
         </div>
       </div>
@@ -86,172 +119,230 @@ function CircularProgress({
   );
 }
 
-/* ── Verification score arc ─────────────────────────────────────────────── */
-function ScoreArc({ value, max = 100 }: { value: number; max?: number }) {
-  const pct = Math.min(max, Math.max(0, value)) / max;
-  const w = 160;
-  const h = 90;
-  const r = 70;
-  const cx = w / 2;
-  const cy = h - 8;
-  const start = Math.PI;
-  const end = 0;
-  const angle = start + (end - start) * pct;
-
-  function polar(a: number) {
-    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
-  }
-  const bgStart = polar(Math.PI);
-  const bgEnd = polar(0);
-  const fgEnd = polar(angle);
-  const large = pct > 0.5 ? 1 : 0;
-
-  const color =
-    value >= 70 ? "#10b981" : value >= 40 ? "#3b82f6" : value >= 20 ? "#f59e0b" : "#ef4444";
-
+function CvsSummary({ count, recent }: { count: number; recent: Doc[] }) {
   return (
-    <div className="flex flex-col items-center gap-1">
-      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-        <path
-          d={`M ${bgStart.x} ${bgStart.y} A ${r} ${r} 0 0 1 ${bgEnd.x} ${bgEnd.y}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={10}
-          strokeLinecap="round"
-          className="text-border opacity-60"
-        />
-        {pct > 0 && (
-          <path
-            d={`M ${bgStart.x} ${bgStart.y} A ${r} ${r} 0 ${large} 1 ${fgEnd.x} ${fgEnd.y}`}
-            fill="none"
-            stroke={color}
-            strokeWidth={10}
-            strokeLinecap="round"
-            className="transition-all duration-700 ease-out"
-          />
-        )}
-        <text
-          x={cx}
-          y={cy - 8}
-          textAnchor="middle"
-          className="fill-foreground text-2xl font-semibold"
-          style={{ fontSize: 28 }}
-        >
-          {value}
-        </text>
-        <text
-          x={cx}
-          y={cy + 12}
-          textAnchor="middle"
-          className="fill-muted"
-          style={{ fontSize: 11 }}
-        >
-          / {max}
-        </text>
-      </svg>
-      <p className="text-sm text-muted">Verification score</p>
+    <div className="flex min-h-[128px] flex-col items-center justify-center gap-2">
+      <p className="text-4xl font-semibold tracking-tight tabular-nums text-violet-600 dark:text-violet-400">
+        {count}
+      </p>
+      <p className="text-sm text-muted">Generated CVs</p>
+      {recent.length > 0 && (
+        <ul className="mt-1 w-full max-w-[200px] space-y-0.5 text-center">
+          {recent.map((d) => (
+            <li
+              key={d.id}
+              className="truncate text-[11px] leading-tight text-muted/80"
+              title={d.title}
+            >
+              {d.target_job_title || d.title}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
-/* ── Career timeline bars by year ───────────────────────────────────────── */
-function CareerChart({ entries }: { entries: TimelineEntry[] }) {
-  const years = useMemo(() => {
-    if (!entries.length) return [];
-    const map = new Map<number, number>();
-    const nowY = new Date().getFullYear();
-    for (const e of entries) {
-      const start = new Date(e.start_date).getFullYear();
-      const end = e.is_current || !e.end_date ? nowY : new Date(e.end_date).getFullYear();
-      for (let y = start; y <= end; y++) {
-        map.set(y, (map.get(y) || 0) + 1);
-      }
-    }
-    const sorted = [...map.entries()].sort((a, b) => a[0] - b[0]);
-    // show last 8 years max
-    return sorted.slice(-8);
-  }, [entries]);
+const KIND_META: Record<
+  ActivityPoint["kind"],
+  { y: number; color: string; label: string }
+> = {
+  career: { y: 0, color: "#3b82f6", label: "Career" },
+  skill: { y: 1, color: "#10b981", label: "Skills" },
+  cert: { y: 2, color: "#f59e0b", label: "Certs" },
+  cv: { y: 3, color: "#8b5cf6", label: "CVs" },
+};
 
-  const max = Math.max(1, ...years.map(([, n]) => n));
-  const colors = ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ec4899", "#6366f1", "#14b8a6"];
+function ActivityGraph({ points }: { points: ActivityPoint[] }) {
+  const [hover, setHover] = useState<ActivityPoint | null>(null);
 
-  if (!years.length) {
+  const sorted = useMemo(
+    () =>
+      [...points]
+        .filter((p) => !Number.isNaN(p.date.getTime()))
+        .sort((a, b) => a.date.getTime() - b.date.getTime()),
+    [points]
+  );
+
+  if (sorted.length === 0) {
     return (
-      <div className="flex h-36 items-center justify-center text-sm text-muted">
-        No career entries yet
+      <div className="flex h-56 items-center justify-center text-sm text-muted">
+        Add timeline, skills, certifications, or generate a CV to see your activity graph.
       </div>
     );
   }
 
+  const padL = 56;
+  const padR = 24;
+  const padT = 16;
+  const padB = 36;
+  const width = 800;
+  const height = 260;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const laneH = plotH / 4;
+
+  const tMin = sorted[0].date.getTime();
+  const tMax = Math.max(sorted[sorted.length - 1].date.getTime(), tMin + 1);
+  const span = tMax - tMin || 1;
+
+  function xOf(d: Date) {
+    return padL + ((d.getTime() - tMin) / span) * plotW;
+  }
+  function yOf(kind: ActivityPoint["kind"]) {
+    return padT + KIND_META[kind].y * laneH + laneH / 2;
+  }
+
+  const tickCount = Math.min(6, Math.max(2, sorted.length));
+  const ticks: Date[] = [];
+  for (let i = 0; i < tickCount; i++) {
+    ticks.push(new Date(tMin + (span * i) / (tickCount - 1 || 1)));
+  }
+
+  const byKind = (Object.keys(KIND_META) as ActivityPoint["kind"][]).map((kind) => ({
+    kind,
+    pts: sorted.filter((p) => p.kind === kind),
+  }));
+
+  function fmtTick(d: Date) {
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short" });
+  }
+
   return (
     <div className="w-full">
-      <div className="flex h-36 items-end gap-2 sm:gap-3">
-        {years.map(([year, count], i) => {
-          const h = Math.max(12, (count / max) * 100);
-          return (
-            <div key={year} className="group flex flex-1 flex-col items-center gap-1.5">
-              <span className="text-[10px] font-medium tabular-nums text-muted opacity-0 transition group-hover:opacity-100">
-                {count}
-              </span>
-              <div
-                className="w-full max-w-[36px] rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90"
-                style={{
-                  height: `${h}%`,
-                  background: colors[i % colors.length],
-                  minHeight: 12,
-                }}
-                title={`${year}: ${count} role${count === 1 ? "" : "s"}`}
-              />
-              <span className="text-[11px] tabular-nums text-muted">{year}</span>
-            </div>
-          );
-        })}
-      </div>
-      <p className="mt-3 text-center text-sm text-muted">
-        Career activity by year · {entries.length} entr{entries.length === 1 ? "y" : "ies"}
-      </p>
-    </div>
-  );
-}
-
-/* ── Generated CVs mini chart ───────────────────────────────────────────── */
-function CvsChart({ count }: { count: number }) {
-  const bars = Math.min(12, Math.max(count, 1));
-  const filled = Math.min(count, 12);
-
-  return (
-    <div className="flex flex-col items-center gap-3">
-      <div className="flex h-28 items-end gap-1.5">
-        {Array.from({ length: bars }).map((_, i) => {
-          const active = i < filled;
-          const heights = [40, 55, 70, 50, 85, 60, 75, 45, 90, 65, 80, 55];
-          return (
-            <div
-              key={i}
-              className={cn(
-                "w-3 rounded-t transition-all duration-500",
-                active ? "bg-violet-500 dark:bg-violet-400" : "bg-border"
-              )}
-              style={{
-                height: `${heights[i % heights.length]}%`,
-                opacity: active ? 1 : 0.4,
-                transitionDelay: `${i * 40}ms`,
-              }}
+      <div className="mb-3 flex flex-wrap items-center gap-4 text-xs text-muted">
+        {(Object.keys(KIND_META) as ActivityPoint["kind"][]).map((k) => (
+          <span key={k} className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{ background: KIND_META[k].color }}
             />
-          );
-        })}
+            {KIND_META[k].label}
+          </span>
+        ))}
       </div>
-      <div className="text-center">
-        <p className="text-2xl font-semibold tabular-nums text-violet-600 dark:text-violet-400">
-          {count}
+      <div className="w-full overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="h-auto w-full min-w-[520px]"
+          role="img"
+          aria-label="Career activity over time"
+        >
+          {(Object.keys(KIND_META) as ActivityPoint["kind"][]).map((k) => {
+            const y = yOf(k);
+            return (
+              <g key={k}>
+                <line
+                  x1={padL}
+                  y1={y}
+                  x2={width - padR}
+                  y2={y}
+                  stroke="currentColor"
+                  strokeOpacity={0.08}
+                  strokeWidth={1}
+                />
+                <text
+                  x={padL - 10}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="fill-muted"
+                  style={{ fontSize: 11 }}
+                >
+                  {KIND_META[k].label}
+                </text>
+              </g>
+            );
+          })}
+
+          <line
+            x1={padL}
+            y1={height - padB + 4}
+            x2={width - padR}
+            y2={height - padB + 4}
+            stroke="currentColor"
+            strokeOpacity={0.2}
+            strokeWidth={1}
+          />
+          {ticks.map((t, i) => (
+            <text
+              key={i}
+              x={xOf(t)}
+              y={height - 10}
+              textAnchor="middle"
+              className="fill-muted"
+              style={{ fontSize: 10 }}
+            >
+              {fmtTick(t)}
+            </text>
+          ))}
+
+          {byKind.map(({ kind, pts }) => {
+            if (pts.length < 2) return null;
+            const d = pts
+              .map((p, i) => `${i === 0 ? "M" : "L"} ${xOf(p.date)} ${yOf(kind)}`)
+              .join(" ");
+            return (
+              <path
+                key={kind}
+                d={d}
+                fill="none"
+                stroke={KIND_META[kind].color}
+                strokeWidth={2}
+                strokeOpacity={0.45}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            );
+          })}
+
+          {sorted.map((p) => {
+            const cx = xOf(p.date);
+            const cy = yOf(p.kind);
+            const active = hover?.id === p.id;
+            return (
+              <g
+                key={p.id}
+                onMouseEnter={() => setHover(p)}
+                onMouseLeave={() => setHover(null)}
+                className="cursor-pointer"
+              >
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={active ? 7 : 5}
+                  fill={KIND_META[p.kind].color}
+                  stroke="var(--background)"
+                  strokeWidth={2}
+                  className="transition-all duration-150"
+                />
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      {hover ? (
+        <p className="mt-2 text-center text-sm text-foreground">
+          <span className="font-medium">{hover.label}</span>
+          {hover.detail ? <span className="text-muted"> · {hover.detail}</span> : null}
+          <span className="text-muted">
+            {" "}
+            ·{" "}
+            {hover.date.toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })}
+          </span>
         </p>
-        <p className="text-sm text-muted">Generated CVs</p>
-      </div>
+      ) : (
+        <p className="mt-2 text-center text-sm text-muted">
+          Hover a point to inspect · {sorted.length} events across your timeline
+        </p>
+      )}
     </div>
   );
 }
 
-/* ── Notebook section wrapper ───────────────────────────────────────────── */
 function NoteSection({
   children,
   className,
@@ -266,10 +357,19 @@ function NoteSection({
   );
 }
 
+function parseDate(v?: string | null): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export default function DashboardPage() {
   const pathname = usePathname();
   const [data, setData] = useState<Dashboard | null>(null);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [certs, setCerts] = useState<Cert[]>([]);
+  const [docs, setDocs] = useState<Doc[]>([]);
   const [signedOut, setSignedOut] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -282,25 +382,83 @@ export default function DashboardPage() {
           setLoading(false);
           return;
         }
-        const [dash, timeline] = await Promise.all([
+        const [dash, timeline, sk, cert, documents] = await Promise.all([
           api<Dashboard>("/api/profile/dashboard"),
           api<TimelineEntry[]>("/api/timeline").catch(() => [] as TimelineEntry[]),
+          api<Skill[]>("/api/skills").catch(() => [] as Skill[]),
+          api<Cert[]>("/api/certifications").catch(() => [] as Cert[]),
+          api<Doc[]>("/api/documents").catch(() => [] as Doc[]),
         ]);
         setData(dash);
         setEntries(Array.isArray(timeline) ? timeline : []);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "";
-        if (msg === "Unauthorized" || msg.toLowerCase().includes("not auth")) {
-          setSignedOut(true);
-        } else {
-          // soft fail — still show signed-out style rather than tech errors
-          setSignedOut(true);
-        }
+        setSkills(Array.isArray(sk) ? sk : []);
+        setCerts(Array.isArray(cert) ? cert : []);
+        setDocs(Array.isArray(documents) ? documents : []);
+      } catch {
+        setSignedOut(true);
       } finally {
         setLoading(false);
       }
     })();
   }, []);
+
+  const activityPoints = useMemo(() => {
+    const pts: ActivityPoint[] = [];
+    for (const e of entries) {
+      const d = parseDate(e.start_date);
+      if (d) {
+        pts.push({
+          id: `career-${e.id}`,
+          date: d,
+          label: e.job_title,
+          detail: e.organization,
+          kind: "career",
+        });
+      }
+    }
+    for (const s of skills) {
+      const d = parseDate(s.acquired_at) || parseDate(s.created_at);
+      if (d) {
+        pts.push({
+          id: `skill-${s.id}`,
+          date: d,
+          label: s.name,
+          kind: "skill",
+        });
+      }
+    }
+    for (const c of certs) {
+      const d = parseDate(c.issued_at) || parseDate(c.created_at);
+      if (d) {
+        pts.push({
+          id: `cert-${c.id}`,
+          date: d,
+          label: c.name,
+          kind: "cert",
+        });
+      }
+    }
+    for (const doc of docs) {
+      if (doc.doc_type !== "cv") continue;
+      const d = parseDate(doc.created_at);
+      if (d) {
+        pts.push({
+          id: `cv-${doc.id}`,
+          date: d,
+          label: doc.target_job_title || doc.title,
+          kind: "cv",
+        });
+      }
+    }
+    return pts;
+  }, [entries, skills, certs, docs]);
+
+  const recentCvs = useMemo(() => {
+    return docs
+      .filter((d) => d.doc_type === "cv")
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 3);
+  }, [docs]);
 
   if (loading) {
     return <p className="py-12 text-sm text-muted">Loading dashboard…</p>;
@@ -325,37 +483,49 @@ export default function DashboardPage() {
     );
   }
   if (p.verification_score >= 40) {
-    insights.push("Your verification score is competitive — recruiters filter for verified claims first.");
+    insights.push(
+      "Your verification score is competitive — recruiters filter for verified claims first."
+    );
   } else if (data.timeline_count > 0) {
-    insights.push("Adding employment proof for your latest role is the highest-leverage next step for trust.");
+    insights.push(
+      "Adding employment proof for your latest role is the highest-leverage next step for trust."
+    );
   }
   if (data.generated_cvs === 0 && data.timeline_count > 0) {
-    insights.push("You have timeline data ready — generate a tailored CV for an open role in one step.");
+    insights.push(
+      "You have timeline data ready — generate a tailored CV for an open role in one step."
+    );
   }
 
   return (
     <div className="space-y-0">
-      {/* Header — notebook top */}
       <NoteSection>
         <h1 className="text-3xl font-semibold tracking-tight">
           Hello{p.full_name ? `, ${p.full_name.split(" ")[0]}` : ""}
         </h1>
-        <p className="mt-1.5 text-muted">{p.headline || "Complete your profile to get started."}</p>
+        <p className="mt-1.5 text-muted">
+          {p.headline || "Complete your profile to get started."}
+        </p>
       </NoteSection>
 
-      {/* Metrics row — colorful charts, no boxes */}
-      <NoteSection>
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
-          <CircularProgress value={p.profile_completion} label="Profile completion" />
-          <ScoreArc value={p.verification_score} />
-          <div className="sm:col-span-2 lg:col-span-1">
-            <CareerChart entries={entries} />
-          </div>
-          <CvsChart count={data.generated_cvs} />
+      <NoteSection className="pt-8">
+        <div className="grid gap-10 sm:grid-cols-3">
+          <CircularMetric value={p.profile_completion} label="Profile completion" />
+          <CircularMetric
+            value={p.verification_score}
+            max={100}
+            label="Verification score"
+            display={`${p.verification_score}`}
+          />
+          <CvsSummary count={data.generated_cvs} recent={recentCvs} />
         </div>
       </NoteSection>
 
-      {/* Next step */}
+      <NoteSection className="pt-8">
+        <h2 className="mb-4 text-lg font-semibold">Career activity</h2>
+        <ActivityGraph points={activityPoints} />
+      </NoteSection>
+
       <NoteSection>
         <p className="text-xs font-medium uppercase tracking-wider text-muted">
           Most important next step
@@ -365,13 +535,15 @@ export default function DashboardPage() {
         </TextAction>
       </NoteSection>
 
-      {/* Insights */}
       {insights.length > 0 && (
         <NoteSection>
           <h2 className="mb-4 text-lg font-semibold">Career insights</h2>
           <ul className="space-y-3">
             {insights.map((insight) => (
-              <li key={insight} className="border-b border-border/60 pb-3 text-sm text-muted last:border-0 last:pb-0">
+              <li
+                key={insight}
+                className="border-b border-border/60 pb-3 text-sm text-muted last:border-0 last:pb-0"
+              >
                 {insight}
               </li>
             ))}
@@ -379,7 +551,6 @@ export default function DashboardPage() {
         </NoteSection>
       )}
 
-      {/* Recommended actions */}
       {data.recommended_actions?.length > 0 && (
         <NoteSection>
           <h2 className="mb-4 text-lg font-semibold">Recommended actions</h2>
@@ -394,7 +565,6 @@ export default function DashboardPage() {
         </NoteSection>
       )}
 
-      {/* Quick links */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-6 text-sm">
         <TextAction href="/timeline" variant="primary">
           Career Timeline

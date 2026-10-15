@@ -155,6 +155,8 @@ class Skill(Base):
     category: Mapped[str] = mapped_column(String(64), default="technical")  # technical|leadership|industry
     proficiency: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # beginner|intermediate|expert
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # When the skill was acquired / started (user-facing date)
+    acquired_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     profile: Mapped["Profile"] = relationship(back_populates="skills")

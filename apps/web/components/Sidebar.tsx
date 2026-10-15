@@ -18,7 +18,6 @@ import {
   Building2,
   Search,
   LayoutDashboard,
-  PanelLeftClose,
   PanelLeft,
   Users,
 } from "lucide-react";
@@ -102,12 +101,13 @@ export function Sidebar() {
       >
         <div className={cn("flex items-center gap-2 min-w-0", collapsed && "justify-center")}>
           <Image
-            src={collapsed ? "/icons/logo-32.png" : "/icons/logo-32.png"}
+            src="/icons/logo-128.png"
             alt="Crede"
-            width={28}
-            height={28}
+            width={32}
+            height={32}
             className="shrink-0"
             priority
+            quality={100}
           />
           {!collapsed && (
             <span className="text-sm font-bold tracking-tight text-foreground truncate">
@@ -150,7 +150,7 @@ export function Sidebar() {
               onClick={toggleCollapse}
               className="flex h-8 w-8 items-center justify-center rounded-card text-muted transition hover:bg-border/50 hover:text-foreground"
             >
-              <PanelLeftClose className="h-4 w-4" />
+              <PanelLeft className="h-4 w-4" />
             </button>
           </div>
         )}

@@ -3,13 +3,21 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 
-type Skill = { id: number; name: string; category: string; proficiency?: string; verified: boolean };
+type Skill = {
+  id: number;
+  name: string;
+  category: string;
+  proficiency?: string;
+  verified: boolean;
+  acquired_at?: string | null;
+};
 type CatalogHit = { id: number; name: string; category?: string; description?: string };
 
 export default function SkillsPage() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("technical");
+  const [acquiredAt, setAcquiredAt] = useState("");
   const [editId, setEditId] = useState<number | null>(null);
   const [hints, setHints] = useState<CatalogHit[]>([]);
 
@@ -36,9 +44,22 @@ export default function SkillsPage() {
     }
   }, []);
 
+  function resetForm() {
+    setName("");
+    setCategory("technical");
+    setAcquiredAt("");
+    setEditId(null);
+    setHints([]);
+  }
+
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
+    const payload = {
+      name: name.trim(),
+      category,
+      acquired_at: acquiredAt || null,
+    };
     if (editId) {
       const sk = skills.find((s) => s.id === editId);
       if (sk?.verified) {
@@ -47,16 +68,14 @@ export default function SkillsPage() {
         );
         if (!ok) return;
       }
-      await api.patch(`/skills/${editId}`, { name: name.trim(), category });
-      setEditId(null);
+      await api.patch(`/skills/${editId}`, payload);
     } else {
       await api("/api/skills", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim(), category }),
+        body: JSON.stringify(payload),
       });
     }
-    setName("");
-    setHints([]);
+    resetForm();
     load();
   }
 
@@ -67,6 +86,18 @@ export default function SkillsPage() {
     if (!confirm(msg)) return;
     await api.delete(`/skills/${s.id}`);
     load();
+  }
+
+  function formatDate(d?: string | null) {
+    if (!d) return null;
+    try {
+      return new Date(d).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+      });
+    } catch {
+      return d;
+    }
   }
 
   return (
@@ -107,23 +138,28 @@ export default function SkillsPage() {
             </ul>
           )}
         </div>
-        <select className="input max-w-[160px]" value={category} onChange={(e) => setCategory(e.target.value)}>
+        <select
+          className="input max-w-[160px]"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        >
           <option value="technical">Technical</option>
           <option value="leadership">Leadership</option>
           <option value="industry">Industry</option>
         </select>
+        <input
+          type="date"
+          className="input max-w-[160px]"
+          value={acquiredAt}
+          onChange={(e) => setAcquiredAt(e.target.value)}
+          title="Start date / date acquired"
+          aria-label="Start date or date acquired"
+        />
         <button type="submit" className="text-action">
           {editId ? "Save" : "Add"}
         </button>
         {editId && (
-          <button
-            type="button"
-            className="text-action-muted"
-            onClick={() => {
-              setEditId(null);
-              setName("");
-            }}
-          >
+          <button type="button" className="text-action-muted" onClick={resetForm}>
             Cancel
           </button>
         )}
@@ -136,6 +172,7 @@ export default function SkillsPage() {
               <p className="text-xs text-muted capitalize">
                 {s.category}
                 {s.verified ? " · Verified" : ""}
+                {formatDate(s.acquired_at) ? ` · ${formatDate(s.acquired_at)}` : ""}
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -146,6 +183,7 @@ export default function SkillsPage() {
                   setEditId(s.id);
                   setName(s.name);
                   setCategory(s.category);
+                  setAcquiredAt(s.acquired_at ? s.acquired_at.slice(0, 10) : "");
                 }}
               >
                 Edit
