@@ -281,7 +281,7 @@ function GenerateInner() {
               Missing skills noted: {doc.matching_insights.missing_skills.join(", ")}
             </p>
           )}
-        </div>
+        </section>
       )}
 
       <p className="text-xs text-muted">

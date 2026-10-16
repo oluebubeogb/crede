@@ -168,11 +168,6 @@ function NoteSection({
   );
 }
 
-function parseActivityDate(v?: string | null): Date | null {
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
 
 export default function DashboardPage() {
   const pathname = usePathname();
