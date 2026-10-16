@@ -152,7 +152,7 @@ function GenerateInner() {
 
       {error && (
         <section className="note-section">
-          <p className="text-[0.9rem] text-danger">{error}</p>
+          <p className="text-sm text-danger">{error}</p>
         </section>
       )}
 
@@ -210,15 +210,15 @@ function GenerateInner() {
         {analysis && (
           <div className="space-y-3 border-t border-border pt-4">
             <div className="flex items-center justify-between">
-              <p className="text-[0.9rem] font-medium">Match analysis</p>
-              <p className="text-[1.05rem] font-semibold text-accent">{analysis.score}%</p>
+              <p className="text-sm font-medium">Match analysis</p>
+              <p className="text-base font-semibold text-accent">{analysis.score}%</p>
             </div>
             {analysis.strengths.length > 0 && (
               <div>
-                <p className="mb-1 text-[0.75rem] font-medium uppercase tracking-wider text-muted">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">
                   Strengths
                 </p>
-                <ul className="list-inside list-disc space-y-0.5 text-[0.9rem]">
+                <ul className="list-inside list-disc space-y-0.5 text-sm">
                   {analysis.strengths.map((s, i) => (
                     <li key={i}>{s}</li>
                   ))}
@@ -227,10 +227,10 @@ function GenerateInner() {
             )}
             {analysis.gaps.length > 0 && (
               <div>
-                <p className="mb-1 text-[0.75rem] font-medium uppercase tracking-wider text-muted">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">
                   Suggested edits
                 </p>
-                <ul className="list-inside list-disc space-y-0.5 text-[0.9rem] text-muted">
+                <ul className="list-inside list-disc space-y-0.5 text-sm text-muted">
                   {analysis.gaps.map((g, i) => (
                     <li key={i}>{g}</li>
                   ))}
@@ -270,17 +270,17 @@ function GenerateInner() {
             <Package className="h-4 w-4" />
           </IconButton>
           {loading && status && (
-            <span className="ml-2 text-[0.8rem] text-muted">Status: {status}</span>
+            <span className="ml-2 text-xs text-muted">Status: {status}</span>
           )}
         </div>
       </form>
 
       {doc && (
         <section className="note-section space-y-2">
-          <p className="text-[0.95rem] font-medium">{doc.title}</p>
-          <p className="text-[0.8rem] capitalize text-muted">Status: {doc.status}</p>
+          <p className="text-sm font-medium">{doc.title}</p>
+          <p className="text-xs capitalize text-muted">Status: {doc.status}</p>
           {doc.status === "ready" && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.9rem]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <TextAction href={`/documents/${doc.id}`} variant="primary">
                 Open document
               </TextAction>
@@ -295,13 +295,13 @@ function GenerateInner() {
             </div>
           )}
           {doc.status === "failed" && (
-            <p className="text-[0.9rem] text-danger">
+            <p className="text-sm text-danger">
               {doc.error_message || "Generation failed"}
             </p>
           )}
           {doc.matching_insights?.missing_skills &&
             doc.matching_insights.missing_skills.length > 0 && (
-              <p className="text-[0.8rem] text-muted">
+              <p className="text-xs text-muted">
                 Missing skills noted: {doc.matching_insights.missing_skills.join(", ")}
               </p>
             )}
@@ -313,7 +313,7 @@ function GenerateInner() {
 
 export default function GeneratePage() {
   return (
-    <Suspense fallback={<p className="text-[0.9rem] text-muted">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
       <GenerateInner />
     </Suspense>
   );

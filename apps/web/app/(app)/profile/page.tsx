@@ -86,12 +86,12 @@ function LiveCircle({
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-[1.05rem] font-semibold tabular-nums" style={{ color }}>
+          <span className="text-base font-semibold tabular-nums" style={{ color }}>
             {display ?? `${Math.round(pct)}%`}
           </span>
         </div>
       </div>
-      <p className="text-[0.8rem] text-muted">{label}</p>
+      <p className="text-xs text-muted">{label}</p>
     </div>
   );
 }
@@ -152,7 +152,7 @@ export default function ProfilePage() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  if (!p) return <p className="py-12 text-[0.9rem] text-muted">Loading…</p>;
+  if (!p) return <p className="py-12 text-sm text-muted">Loading…</p>;
 
   const publicPath = form.username || p.username ? `/u/${form.username || p.username}` : null;
   const publicUrl =
@@ -168,7 +168,7 @@ export default function ProfilePage() {
       </section>
 
       <section className="note-section">
-        <p className="text-[0.75rem] font-medium uppercase tracking-wider text-muted">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted">
           Public profile
         </p>
         {publicPath ? (
@@ -176,13 +176,13 @@ export default function ProfilePage() {
             href={publicPath}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-2 text-[0.95rem] font-medium text-accent hover:underline"
+            className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-accent hover:underline"
           >
             {publicUrl || publicPath}
             <ExternalLink className="h-3.5 w-3.5" />
           </Link>
         ) : (
-          <p className="mt-2 text-[0.9rem] text-muted">
+          <p className="mt-2 text-sm text-muted">
             Set a public username to get a shareable profile link.
           </p>
         )}
@@ -210,7 +210,7 @@ export default function ProfilePage() {
               readOnly
               disabled
             />
-            <p className="mt-1 text-[0.8rem] text-muted">Public username cannot be edited</p>
+            <p className="mt-1 text-xs text-muted">Public username cannot be edited</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -265,7 +265,7 @@ export default function ProfilePage() {
                 onBlur={() => setTimeout(() => setShowCountries(false), 150)}
               />
               {showCountries && countryHints.length > 0 && (
-                <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto border border-border bg-background text-[0.9rem] shadow-lg">
+                <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto border border-border bg-background text-sm shadow-lg">
                   {countryHints.map((c) => (
                     <li key={c}>
                       <button
@@ -334,7 +334,7 @@ export default function ProfilePage() {
             <button type="submit" className="text-action">
               Save
             </button>
-            {saved && <span className="text-[0.9rem] text-success">Saved</span>}
+            {saved && <span className="text-sm text-success">Saved</span>}
           </div>
         </form>
       </section>

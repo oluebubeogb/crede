@@ -56,7 +56,7 @@ export default function OrganizationsPage() {
       </section>
 
       <form onSubmit={onCreate} className="note-section space-y-4">
-        <h2 className="text-[1.05rem] font-semibold">Create organization</h2>
+        <h2 className="text-base font-semibold">Create organization</h2>
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <label className="label">Name</label>
@@ -71,7 +71,7 @@ export default function OrganizationsPage() {
             <input className="input" value={industry} onChange={(e) => setIndustry(e.target.value)} />
           </div>
         </div>
-        {error && <p className="text-[0.9rem] text-danger">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
         <button type="submit" className="text-action" disabled={loading}>
           {loading ? "Creating…" : "Create"}
         </button>

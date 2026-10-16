@@ -33,7 +33,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Inter, system-ui, sans-serif;
-  font-size: 20px;
+  font-size: 16px;
   line-height: 1.5;
   min-height: 100%;
 }
@@ -53,7 +53,7 @@ html.dark body {
   }
 
   .input {
-    @apply h-11 w-full border border-border bg-background px-3 text-[0.9rem] text-foreground outline-none transition;
+    @apply h-10 w-full border border-border bg-background px-3 text-sm text-foreground outline-none transition;
     border-radius: 10px;
   }
   .input:focus {
@@ -62,7 +62,7 @@ html.dark body {
   }
 
   .label {
-    @apply mb-1.5 block text-[0.9rem] font-medium text-foreground;
+    @apply mb-1.5 block text-sm font-medium text-foreground;
   }
 
   .nav-hover:hover {
@@ -110,15 +110,16 @@ html.dark body {
     color: var(--warning);
   }
 
+  /* Page titles: slightly above 16px body, still compact */
   .page-title {
-    @apply text-[1.15rem] font-semibold tracking-tight text-foreground;
+    @apply text-xl font-semibold tracking-tight text-foreground;
   }
 
   .page-lead {
-    @apply mt-1.5 text-[0.9rem] text-muted;
+    @apply mt-1.5 text-sm text-muted;
   }
 
   .note-section {
-    @apply border-b border-border pb-8 pt-2;
+    @apply border-b border-border pb-6 pt-2;
   }
 }

@@ -133,7 +133,7 @@ function CircularMetric({
 function CvsSummary({ count, recent }: { count: number; recent: Doc[] }) {
   return (
     <div className="flex min-h-[128px] flex-col items-center justify-center gap-2">
-      <p className="text-[1.5rem] font-semibold tracking-tight tabular-nums text-violet-600 dark:text-violet-400">
+      <p className="text-2xl font-semibold tracking-tight tabular-nums text-violet-600 dark:text-violet-400">
         {count}
       </p>
       <p className="text-sm text-muted">Generated CVs</p>
