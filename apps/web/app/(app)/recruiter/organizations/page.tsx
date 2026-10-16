@@ -49,7 +49,7 @@ export default function OrganizationsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-content space-y-8 p-8">
+    <div className="w-full space-y-0">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Organizations</h1>
         <p className="mt-1 text-muted">Create and verify your employer profile.</p>

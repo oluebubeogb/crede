@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { IconButton } from "@/components/ui/IconButton";
+import { Pencil, Trash2 } from "lucide-react";
 
 type Cert = {
   id: number;
@@ -64,7 +66,7 @@ export default function CertificationsPage() {
     const verified = (c.verification_status || "").toLowerCase() === "verified";
     const msg = verified
       ? "This certification is verified. Deleting removes the verified record. Continue?"
-      : `Delete “${c.name}”?`;
+      : `Delete "${c.name}"?`;
     if (!confirm(msg)) return;
     await api.delete(`/certifications/${c.id}`);
     load();
@@ -86,54 +88,64 @@ export default function CertificationsPage() {
     <div className="space-y-0">
       <section className="note-section">
         <h1 className="text-2xl font-semibold tracking-tight">Certifications</h1>
-        <p className="mt-1.5 text-sm text-muted">Credentials with issuance dates for your verified profile.</p>
+        <p className="mt-1.5 text-sm text-muted">
+          Credentials with issuance dates for your verified profile.
+        </p>
       </section>
-      <form onSubmit={add} className="note-section grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <input
-          className="input"
-          placeholder="Name"
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <input
-          className="input"
-          placeholder="Issuer"
-          value={issuer}
-          onChange={(e) => setIssuer(e.target.value)}
-        />
-        <input
-          type="date"
-          className="input"
-          value={issuedAt}
-          onChange={(e) => setIssuedAt(e.target.value)}
-          title="Date of issuance"
-          aria-label="Date of issuance"
-        />
-        <div className="flex gap-2 items-center">
-          <button type="submit" className="text-action">
-            {editId ? "Save" : "Add certification"}
-          </button>
-          {editId && (
-            <button type="button" className="text-action-muted" onClick={resetForm}>
-              Cancel
+
+      <section className="note-section">
+        <form onSubmit={add} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <input
+            className="input"
+            placeholder="Name"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder="Issuer"
+            value={issuer}
+            onChange={(e) => setIssuer(e.target.value)}
+          />
+          <input
+            type="date"
+            className="input"
+            value={issuedAt}
+            onChange={(e) => setIssuedAt(e.target.value)}
+            title="Date of issuance"
+            aria-label="Date of issuance"
+          />
+          <div className="flex items-center gap-2">
+            <button type="submit" className="text-action">
+              {editId ? "Save" : "Add certification"}
             </button>
-          )}
-        </div>
-      </form>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {items.map((c) => (
-          <div key={c.id} className="note-section py-4">
-            <p className="font-medium">{c.name}</p>
-            <p className="text-sm text-muted">{c.issuer}</p>
-            {formatDate(c.issued_at) && (
-              <p className="mt-1 text-xs text-muted">Issued {formatDate(c.issued_at)}</p>
+            {editId && (
+              <button type="button" className="text-action-muted" onClick={resetForm}>
+                Cancel
+              </button>
             )}
-            <p className="mt-2 text-xs uppercase text-muted">{c.verification_status}</p>
-            <div className="mt-2 flex gap-2">
-              <button
-                type="button"
-                className="text-xs text-accent"
+          </div>
+        </form>
+      </section>
+
+      <div>
+        {items.map((c) => (
+          <div
+            key={c.id}
+            className="note-section flex items-start justify-between gap-3 py-4"
+          >
+            <div className="min-w-0">
+              <p className="font-medium">{c.name}</p>
+              <p className="text-sm text-muted">{c.issuer}</p>
+              {formatDate(c.issued_at) && (
+                <p className="mt-1 text-xs text-muted">Issued {formatDate(c.issued_at)}</p>
+              )}
+              <p className="mt-2 text-xs uppercase text-muted">{c.verification_status}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <IconButton
+                label="Edit"
                 onClick={() => {
                   setEditId(c.id);
                   setName(c.name);
@@ -141,14 +153,17 @@ export default function CertificationsPage() {
                   setIssuedAt(c.issued_at ? c.issued_at.slice(0, 10) : "");
                 }}
               >
-                Edit
-              </button>
-              <button type="button" className="text-xs text-danger" onClick={() => remove(c)}>
-                Delete
-              </button>
+                <Pencil className="h-4 w-4" />
+              </IconButton>
+              <IconButton label="Delete" danger onClick={() => remove(c)}>
+                <Trash2 className="h-4 w-4" />
+              </IconButton>
             </div>
           </div>
         ))}
+        {items.length === 0 && (
+          <p className="py-8 text-sm text-muted">No certifications yet.</p>
+        )}
       </div>
     </div>
   );

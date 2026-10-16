@@ -96,9 +96,45 @@ def dashboard(
     )
 
 
-@router.get("/public/{username}", response_model=ProfileOut)
+@router.get("/public/{username}")
 def public_profile(username: str, db: Annotated[Session, Depends(get_db)]):
+    """Public profile + activity data for career chart (no private CVs)."""
     p = db.query(Profile).filter(Profile.username == username, Profile.is_public == True).first()
     if not p:
         raise HTTPException(404, "Profile not found")
-    return _profile_out(p)
+    profile = _profile_out(p)
+    timeline = [
+        {
+            "id": e.id,
+            "job_title": e.job_title,
+            "organization": e.organization,
+            "start_date": e.start_date.isoformat() if e.start_date else None,
+            "end_date": e.end_date.isoformat() if e.end_date else None,
+            "is_current": bool(e.is_current),
+        }
+        for e in (p.timeline_entries or [])
+    ]
+    skills = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "acquired_at": s.acquired_at.isoformat() if getattr(s, "acquired_at", None) else None,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+        }
+        for s in (p.skills or [])
+    ]
+    certifications = [
+        {
+            "id": c.id,
+            "name": c.name,
+            "issued_at": c.issued_at.isoformat() if c.issued_at else None,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        }
+        for c in (p.certifications or [])
+    ]
+    return {
+        **profile.model_dump(mode="json"),
+        "timeline_entries": timeline,
+        "skills": skills,
+        "certifications": certifications,
+    }

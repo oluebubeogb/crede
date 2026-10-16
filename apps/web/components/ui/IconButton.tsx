@@ -46,6 +46,15 @@ export function IconButton({
   );
 
   if (href) {
+    const external = href.startsWith("/backend") || href.startsWith("http");
+    if (external) {
+      return (
+        <a href={href} className={classes} title={label} aria-label={label}>
+          {children}
+          {tip}
+        </a>
+      );
+    }
     return (
       <Link href={href} className={classes} title={label} aria-label={label}>
         {children}

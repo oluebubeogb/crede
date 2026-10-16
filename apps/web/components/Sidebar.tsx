@@ -32,7 +32,7 @@ const professionalNav = [
   { href: "/certifications", label: "Certifications", icon: Award },
   { href: "/verification", label: "Verification", icon: ShieldCheck },
   { href: "/documents", label: "Documents", icon: FileText },
-  { href: "/generate", label: "Generate CV", icon: FileText },
+  { href: "/generate", label: "Generate Files", icon: FileText },
   { href: "/opportunities", label: "Opportunities", icon: Briefcase },
   { href: "/profile", label: "Profile", icon: User },
   { href: "/settings", label: "Settings", icon: Settings },

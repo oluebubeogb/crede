@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { IconButton } from "@/components/ui/IconButton";
+import { FileEdit, FileText, FileType, Trash2 } from "lucide-react";
 
 type Doc = {
   id: number;
@@ -75,18 +77,34 @@ export default function DocumentsPage() {
     }
   }
 
+  async function deleteOne(id: number, title: string) {
+    if (!confirm(`Delete “${title}”?`)) return;
+    setBusy(true);
+    try {
+      await api.delete(`/documents/${id}`);
+      setSelected((s) => {
+        const n = new Set(s);
+        n.delete(id);
+        return n;
+      });
+      load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const items = data?.items || [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-0">
+      <section className="note-section flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Documents</h1>
-          <p className="text-sm text-muted mt-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Documents</h1>
+          <p className="mt-1.5 text-sm text-muted">
             {data ? `${data.total} document${data.total === 1 ? "" : "s"}` : "—"}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
           {selected.size > 0 && (
             <button
               type="button"
@@ -98,25 +116,25 @@ export default function DocumentsPage() {
             </button>
           )}
           <Link href="/generate" className="text-action">
-            Generate
+            Generate Files
           </Link>
         </div>
-      </div>
+      </section>
 
-      {loading && <p className="text-muted">Loading…</p>}
+      {loading && <p className="py-8 text-sm text-muted">Loading…</p>}
 
       {!loading && items.length === 0 && (
-        <div className="card text-center py-16">
+        <section className="note-section text-center py-12">
           <p className="text-muted">Generate your first tailored CV or cover letter.</p>
-          <Link href="/generate" className="text-action">
-            Go to Generate
+          <Link href="/generate" className="text-action mt-3 inline-block">
+            Go to Generate Files
           </Link>
-        </div>
+        </section>
       )}
 
       {items.length > 0 && (
         <>
-          <div className="flex items-center gap-2 text-sm">
+          <section className="note-section flex items-center gap-2 text-sm py-4">
             <input
               type="checkbox"
               checked={selected.size === items.length && items.length > 0}
@@ -126,55 +144,75 @@ export default function DocumentsPage() {
             <label htmlFor="select-all" className="text-muted">
               Select all on this page
             </label>
-          </div>
+          </section>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            {items.map((d) => (
-              <div key={d.id} className="card relative">
-                <div className="absolute top-4 right-4">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(d.id)}
-                    onChange={() => toggle(d.id)}
-                    aria-label={`Select ${d.title}`}
-                  />
-                </div>
-                <p className="font-medium pr-8">{d.title}</p>
-                <p className="text-sm text-muted capitalize mt-0.5">
-                  {d.doc_type.replace("_", " ")} · {d.template}
-                  {d.status && d.status !== "ready" ? ` · ${d.status}` : ""}
-                </p>
-                {d.target_job_title && (
-                  <p className="text-xs text-muted mt-1">Role: {d.target_job_title}</p>
-                )}
-                <p className="mt-2 text-xs text-muted">{new Date(d.created_at).toLocaleString()}</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href={`/documents/${d.id}`} className="text-action">
-                    Open / Edit
-                  </Link>
-                  {d.status === "ready" && d.storage_key_pdf && (
-                    <a
-                      href={`/backend/api/documents/${d.id}/download.pdf`}
-                      className="text-action-muted"
+          <div>
+            {items.map((d) => {
+              const marked = selected.has(d.id);
+              const ready = d.status === "ready" || !d.status;
+              return (
+                <div
+                  key={d.id}
+                  className="note-section flex flex-wrap items-start justify-between gap-3 py-4"
+                >
+                  <div className="flex min-w-0 flex-1 gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={marked}
+                      onChange={() => toggle(d.id)}
+                      aria-label={`Select ${d.title}`}
+                    />
+                    <div className="min-w-0">
+                      <p className="font-medium">{d.title}</p>
+                      <p className="mt-0.5 text-sm capitalize text-muted">
+                        {d.doc_type.replace("_", " ")} · {d.template}
+                        {d.status && d.status !== "ready" ? ` · ${d.status}` : ""}
+                      </p>
+                      {d.target_job_title && (
+                        <p className="mt-1 text-xs text-muted">Role: {d.target_job_title}</p>
+                      )}
+                      <p className="mt-1 text-xs text-muted">
+                        {new Date(d.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <IconButton label="Open / Edit" href={`/documents/${d.id}`}>
+                      <FileEdit className="h-4 w-4" />
+                    </IconButton>
+                    {ready && d.storage_key_pdf && (
+                      <IconButton
+                        label="Download PDF"
+                        href={`/backend/api/documents/${d.id}/download.pdf`}
+                      >
+                        <FileText className="h-4 w-4" />
+                      </IconButton>
+                    )}
+                    {ready && d.storage_key_docx && (
+                      <IconButton
+                        label="Download DOCX"
+                        href={`/backend/api/documents/${d.id}/download.docx`}
+                      >
+                        <FileType className="h-4 w-4" />
+                      </IconButton>
+                    )}
+                                        <IconButton
+                      label="Delete"
+                      danger
+                      disabled={busy}
+                      onClick={() => deleteOne(d.id, d.title)}
                     >
-                      PDF
-                    </a>
-                  )}
-                  {d.status === "ready" && d.storage_key_docx && (
-                    <a
-                      href={`/backend/api/documents/${d.id}/download.docx`}
-                      className="text-action-muted"
-                    >
-                      DOCX
-                    </a>
-                  )}
+                      <Trash2 className="h-4 w-4" />
+                    </IconButton>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {data && data.pages > 1 && (
-            <div className="flex items-center justify-center gap-3 pt-2">
+            <div className="flex items-center justify-center gap-3 py-6">
               <button
                 type="button"
                 className="text-action-muted"

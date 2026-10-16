@@ -119,7 +119,6 @@ export default function ProfilePage() {
     const e164 = local ? `${dial}${local}` : null;
     const updated = await api.patch<Profile>("/profile/me", {
       full_name: form.full_name,
-      username: form.username,
       headline: form.headline,
       industry: form.industry,
       location: form.location,
@@ -150,7 +149,7 @@ export default function ProfilePage() {
       : publicPath;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-0">
+    <div className="w-full space-y-0">
       <section className="note-section">
         <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
         <p className="mt-1.5 text-sm text-muted">
@@ -193,10 +192,19 @@ export default function ProfilePage() {
 
       <section className="note-section">
         <form onSubmit={save} className="space-y-5">
+          <div>
+            <label className="label">Public username</label>
+            <input
+              className="input bg-border/20 text-muted"
+              value={form.username || p.username || ""}
+              readOnly
+              disabled
+            />
+            <p className="mt-1 text-xs text-muted">Public username cannot be edited</p>
+          </div>
           {(
             [
               ["full_name", "Full name"],
-              ["username", "Public username"],
               ["headline", "Headline"],
               ["industry", "Industry"],
               ["location", "Location"],

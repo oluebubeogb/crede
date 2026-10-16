@@ -65,7 +65,6 @@ export default function SettingsPage() {
       await api.patch("/profile/me", {
         preferences: next,
         is_public: next.is_public,
-        username: username || undefined,
       });
       setPrefs(next);
       setMsg("Saved");
@@ -96,16 +95,16 @@ export default function SettingsPage() {
         <p className="mt-1 text-sm text-muted">Account and preferences for your Crede identity.</p>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-b border-border pb-3">
+      <div className="flex flex-wrap gap-1 border-b border-border">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`rounded-card px-3 py-2 text-sm transition ${
+            className={`border-b-2 px-3 py-2.5 text-sm transition ${
               tab === t.id
-                ? "bg-accent font-medium text-white"
-                : "text-muted nav-hover"
+                ? "border-accent font-medium text-accent"
+                : "border-transparent text-muted hover:text-foreground"
             }`}
           >
             {t.label}
@@ -116,7 +115,7 @@ export default function SettingsPage() {
       {msg && <p className="text-sm text-success">{msg}</p>}
 
       {tab === "account" && (
-        <div className="card space-y-4">
+        <div className="note-section space-y-4">
           <h2 className="font-semibold">Account</h2>
           <dl className="grid gap-2 text-sm sm:grid-cols-2">
             <div>
@@ -157,7 +156,7 @@ export default function SettingsPage() {
       )}
 
       {tab === "notifications" && (
-        <div className="card space-y-4">
+        <div className="note-section space-y-4">
           <h2 className="font-semibold">Notifications</h2>
           {(
             [
@@ -192,18 +191,30 @@ export default function SettingsPage() {
       )}
 
       {tab === "privacy" && (
-        <div className="card space-y-4">
+        <div className="note-section space-y-4">
           <h2 className="font-semibold">Privacy</h2>
           <div>
             <label className="label">Public username</label>
             <input
-              className="input"
+              className="input bg-border/20 text-muted"
               value={username}
-              onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-              placeholder="your-handle"
+              readOnly
+              disabled
+              placeholder="Not set"
             />
             <p className="mt-1 text-xs text-muted">
-              Public profile at /u/{username || "username"}
+              Public username cannot be changed here
+              {username ? (
+                <>
+                  {" "}
+                  ·{" "}
+                  <a href={`/u/${username}`} className="text-accent hover:underline">
+                    /u/{username}
+                  </a>
+                </>
+              ) : (
+                ". Set it once from onboarding or support if needed."
+              )}
             </p>
           </div>
           {(
@@ -235,7 +246,7 @@ export default function SettingsPage() {
       )}
 
       {tab === "security" && (
-        <div className="card space-y-4">
+        <div className="note-section space-y-4">
           <h2 className="font-semibold">Security</h2>
           {user?.source === "collab" ? (
             <p className="text-sm text-muted">
@@ -266,22 +277,26 @@ export default function SettingsPage() {
       )}
 
       {tab === "billing" && (
-        <div className="card space-y-3">
+        <div className="note-section space-y-3">
           <h2 className="font-semibold">Billing</h2>
           <p className="text-sm text-muted">
-            You are on the <span className="font-medium text-foreground">Free</span> plan.
+            You are on the <span className="font-medium text-foreground">Free</span> plan with full
+            access to core Crede features while we finish packaging.
           </p>
-          <ul className="list-inside list-disc text-sm text-muted">
-            <li>Career timeline & verification</li>
-            <li>CV generation (fair use)</li>
-            <li>Recruiter search (limited)</li>
+          <ul className="list-inside list-disc space-y-1 text-sm text-muted">
+            <li>Career timeline, skills, certifications & verification</li>
+            <li>Generate Files — tailored CVs and cover letters</li>
+            <li>Opportunity matching and recruiter tools</li>
           </ul>
-          <p className="text-xs text-muted">Professional and Enterprise plans coming soon.</p>
+          <p className="text-sm text-muted">
+            New packages are coming soon. We will introduce clear, value-based plans for
+            professionals and recruiting teams — no change to your current access until then.
+          </p>
         </div>
       )}
 
       {tab === "connected" && (
-        <div className="card space-y-4">
+        <div className="note-section space-y-4">
           <h2 className="font-semibold">Connected apps</h2>
           <div className="flex items-center justify-between rounded-card border border-border px-4 py-3">
             <div>

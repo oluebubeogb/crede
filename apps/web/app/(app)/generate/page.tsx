@@ -136,25 +136,25 @@ function GenerateInner() {
   }
 
   return (
-    <div className="space-y-8 max-w-3xl">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Generate materials</h1>
-        <p className="mt-1 text-sm text-muted">
-          Unlimited CV and cover letter generation. Paste a job description for one-click tailored packages.
+    <div className="space-y-0">
+      <section className="note-section">
+        <h1 className="text-2xl font-semibold tracking-tight">Generate Files</h1>
+        <p className="mt-1.5 text-sm text-muted">
+          Turn a job description into a tailored CV or cover letter from your verified timeline.
         </p>
-      </header>
+      </section>
 
       {error && (
-        <div className="rounded-card border border-danger bg-surface px-4 py-3 text-sm text-danger">
-          {error}
-        </div>
+        <section className="note-section">
+          <p className="text-sm text-danger">{error}</p>
+        </section>
       )}
 
-      <form onSubmit={generate} className="card space-y-5">
+      <form onSubmit={generate} className="note-section space-y-6">
         <div>
           <label className="label">Job description or pasted role text</label>
           <textarea
-            className="input min-h-[140px] py-3"
+            className="input min-h-[260px] py-3"
             placeholder="Paste the full job description here…"
             value={jd}
             onChange={(e) => {
@@ -173,7 +173,7 @@ function GenerateInner() {
         </div>
 
         {analysis && (
-          <div className="rounded-card border border-border bg-background p-4 space-y-3">
+          <div className="space-y-3 border-t border-border pt-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">Match analysis</p>
               <p className="text-lg font-semibold text-accent">{analysis.score}%</p>
@@ -234,7 +234,7 @@ function GenerateInner() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm pt-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-5 text-sm">
           <TextAction type="submit" variant="primary" disabled={loading}>
             {loading ? "Generating…" : docType === "cv" ? "Generate tailored CV" : "Generate cover letter"}
           </TextAction>
@@ -255,7 +255,7 @@ function GenerateInner() {
       </form>
 
       {doc && (
-        <div className="card space-y-2">
+        <section className="note-section space-y-2">
           <p className="text-sm font-medium">{doc.title}</p>
           <p className="text-xs text-muted capitalize">Status: {doc.status}</p>
           {doc.status === "ready" && (
