@@ -99,22 +99,12 @@ export default function DocumentsPage() {
     <div className="space-y-0">
       <section className="note-section flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Documents</h1>
+          <h1 className="page-title">Documents</h1>
           <p className="mt-1.5 text-sm text-muted">
             {data ? `${data.total} document${data.total === 1 ? "" : "s"}` : "—"}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {selected.size > 0 && (
-            <button
-              type="button"
-              className="text-action-danger"
-              disabled={busy}
-              onClick={bulkDelete}
-            >
-              Delete selected ({selected.size})
-            </button>
-          )}
           <Link href="/generate" className="text-action">
             Generate Files
           </Link>
@@ -134,7 +124,7 @@ export default function DocumentsPage() {
 
       {items.length > 0 && (
         <>
-          <section className="note-section flex items-center gap-2 text-sm py-4">
+          <section className="note-section flex flex-wrap items-center gap-2 py-4 text-sm">
             <input
               type="checkbox"
               checked={selected.size === items.length && items.length > 0}
@@ -144,6 +134,45 @@ export default function DocumentsPage() {
             <label htmlFor="select-all" className="text-muted">
               Select all on this page
             </label>
+            <div className="ml-2 flex items-center gap-0.5">
+              <IconButton
+                label="Delete selected"
+                danger
+                disabled={selected.size === 0 || busy}
+                onClick={bulkDelete}
+              >
+                <Trash2 className="h-4 w-4" />
+              </IconButton>
+              <IconButton
+                label="Download PDF"
+                disabled={selected.size === 0}
+                onClick={() => {
+                  items
+                    .filter((d) => selected.has(d.id) && d.storage_key_pdf)
+                    .forEach((d) => {
+                      window.open(`/backend/api/documents/${d.id}/download.pdf`, "_blank");
+                    });
+                }}
+              >
+                <FileText className="h-4 w-4" />
+              </IconButton>
+              <IconButton
+                label="Download DOCX"
+                disabled={selected.size === 0}
+                onClick={() => {
+                  items
+                    .filter((d) => selected.has(d.id) && d.storage_key_docx)
+                    .forEach((d) => {
+                      window.open(`/backend/api/documents/${d.id}/download.docx`, "_blank");
+                    });
+                }}
+              >
+                <FileType className="h-4 w-4" />
+              </IconButton>
+            </div>
+            {selected.size > 0 && (
+              <span className="text-xs text-muted">{selected.size} selected</span>
+            )}
           </section>
 
           <div>

@@ -366,7 +366,7 @@ export default function TimelinePage() {
       <section className="note-section">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Career Timeline</h1>
+            <h1 className="page-title">Career Timeline</h1>
             <p className="mt-1.5 text-sm text-muted">
               Your verified career history is the source of truth for CVs, matching, and trust.
             </p>

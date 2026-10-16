@@ -87,7 +87,7 @@ export default function CertificationsPage() {
   return (
     <div className="space-y-0">
       <section className="note-section">
-        <h1 className="text-2xl font-semibold tracking-tight">Certifications</h1>
+        <h1 className="page-title">Certifications</h1>
         <p className="mt-1.5 text-sm text-muted">
           Credentials with issuance dates for your verified profile.
         </p>

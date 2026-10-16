@@ -28,6 +28,7 @@ export function IconButton({
   const classes = cn(
     "group relative inline-flex h-9 w-9 items-center justify-center rounded-card text-muted transition",
     "hover:bg-border/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+    "disabled:pointer-events-none disabled:opacity-40",
     danger && "hover:text-danger",
     active && "text-accent bg-accent/10",
     className

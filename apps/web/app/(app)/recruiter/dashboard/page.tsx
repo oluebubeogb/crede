@@ -21,7 +21,7 @@ export default function RecruiterDashboard() {
   return (
     <div className="w-full space-y-0">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Recruiter dashboard</h1>
+        <h1 className="page-title">Recruiter dashboard</h1>
         <p className="mt-1 text-muted">Search verified professionals and manage hiring.</p>
       </div>
 

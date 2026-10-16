@@ -33,6 +33,8 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Inter, system-ui, sans-serif;
+  font-size: 20px;
+  line-height: 1.5;
   min-height: 100%;
 }
 
@@ -51,7 +53,7 @@ html.dark body {
   }
 
   .input {
-    @apply h-11 w-full border border-border bg-background px-3 text-sm text-foreground outline-none transition;
+    @apply h-11 w-full border border-border bg-background px-3 text-[0.9rem] text-foreground outline-none transition;
     border-radius: 10px;
   }
   .input:focus {
@@ -60,7 +62,7 @@ html.dark body {
   }
 
   .label {
-    @apply mb-1.5 block text-sm font-medium text-foreground;
+    @apply mb-1.5 block text-[0.9rem] font-medium text-foreground;
   }
 
   .nav-hover:hover {
@@ -106,6 +108,14 @@ html.dark body {
     @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
     background-color: color-mix(in srgb, var(--warning) 18%, transparent);
     color: var(--warning);
+  }
+
+  .page-title {
+    @apply text-[1.15rem] font-semibold tracking-tight text-foreground;
+  }
+
+  .page-lead {
+    @apply mt-1.5 text-[0.9rem] text-muted;
   }
 
   .note-section {

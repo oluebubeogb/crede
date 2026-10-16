@@ -71,7 +71,7 @@ export default function VerificationPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Verification</h1>
+        <h1 className="page-title">Verification</h1>
         <p className="text-sm text-muted">Loading…</p>
       </div>
     );
@@ -80,7 +80,7 @@ export default function VerificationPage() {
   return (
     <div className="space-y-8 max-w-3xl">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Verification</h1>
+        <h1 className="page-title">Verification</h1>
         <p className="mt-1 text-sm text-muted">
           Trust is visible. Verify claims on your timeline and credentials to raise your score.
         </p>

@@ -80,7 +80,7 @@ export default function OpportunitiesPage() {
     return (
       <div className="space-y-0">
         <section className="note-section">
-          <h1 className="text-2xl font-semibold tracking-tight">Opportunities</h1>
+          <h1 className="page-title">Opportunities</h1>
           <p className="mt-1.5 text-sm text-muted">Loading matched roles…</p>
         </section>
       </div>
@@ -90,7 +90,7 @@ export default function OpportunitiesPage() {
   return (
     <div className="space-y-0">
       <section className="note-section">
-        <h1 className="text-2xl font-semibold tracking-tight">Opportunities</h1>
+        <h1 className="page-title">Opportunities</h1>
         <p className="mt-1.5 text-sm text-muted">
           Personalized open roles based on your verified timeline and skills.
         </p>

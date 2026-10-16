@@ -15,7 +15,7 @@ export default function ForRecruitersPage() {
         </Link>
       </header>
       <section className="mx-auto max-w-content px-6 py-24 text-center">
-        <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Find verified professionals.</h1>
+        <h1 className="page-title">Find verified professionals.</h1>
         <p className="mx-auto mt-5 max-w-xl text-lg text-muted">
           Search trusted candidates based on verified career histories. Post jobs and match talent from the same
           source of truth professionals maintain.

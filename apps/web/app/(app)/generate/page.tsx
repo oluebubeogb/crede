@@ -4,8 +4,8 @@ import { useState, useRef, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { TextAction } from "@/components/ui/TextAction";
-import { CircleCheckbox } from "@/components/ui/CircleCheckbox";
-import { InlineFormActions } from "@/components/ui/InlineFormActions";
+import { IconButton } from "@/components/ui/IconButton";
+import { ScanSearch, Sparkles, Package } from "lucide-react";
 
 type Accepted = {
   document_id: number;
@@ -34,13 +34,20 @@ const TEMPLATES = [
   { id: "compact", label: "Compact" },
 ];
 
+const DOC_TYPES = [
+  { id: "cv" as const, label: "CV / Resume" },
+  { id: "cover_letter" as const, label: "Cover letter" },
+];
+
 function GenerateInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefillTitle = searchParams.get("title") || "";
 
   const [jd, setJd] = useState(
-    prefillTitle ? `Role: ${prefillTitle}\n\nPaste the full job description here for a tailored match analysis.` : ""
+    prefillTitle
+      ? `Role: ${prefillTitle}\n\nPaste the full job description here for a tailored match analysis.`
+      : ""
   );
   const [template, setTemplate] = useState("professional");
   const [docType, setDocType] = useState<"cv" | "cover_letter">("cv");
@@ -87,7 +94,6 @@ function GenerateInner() {
     }
     setAnalyzing(true);
     setError(null);
-    // Client-side lightweight analysis until dedicated endpoint exists
     setTimeout(() => {
       const words = jd.toLowerCase();
       const strengths: string[] = [];
@@ -138,21 +144,21 @@ function GenerateInner() {
   return (
     <div className="space-y-0">
       <section className="note-section">
-        <h1 className="text-2xl font-semibold tracking-tight">Generate Files</h1>
-        <p className="mt-1.5 text-sm text-muted">
+        <h1 className="page-title">Generate Files</h1>
+        <p className="page-lead">
           Turn a job description into a tailored CV or cover letter from your verified timeline.
         </p>
       </section>
 
       {error && (
         <section className="note-section">
-          <p className="text-sm text-danger">{error}</p>
+          <p className="text-[0.9rem] text-danger">{error}</p>
         </section>
       )}
 
       <form onSubmit={generate} className="note-section space-y-6">
         <div>
-          <label className="label">Job description or pasted role text</label>
+          <label className="label">Job description</label>
           <textarea
             className="input min-h-[260px] py-3"
             placeholder="Paste the full job description here…"
@@ -164,24 +170,55 @@ function GenerateInner() {
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          <TextAction type="button" variant="primary" onClick={analyzeJob} disabled={analyzing || !jd.trim()}>
-            {analyzing ? "Analyzing…" : "Analyze job"}
-          </TextAction>
-          <span className="text-muted">·</span>
-          <span className="text-xs text-muted">Optional — improves tailored output</span>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="doc-type">
+              Document type
+            </label>
+            <select
+              id="doc-type"
+              className="input"
+              value={docType}
+              onChange={(e) => setDocType(e.target.value as "cv" | "cover_letter")}
+            >
+              {DOC_TYPES.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="template">
+              Template
+            </label>
+            <select
+              id="template"
+              className="input"
+              value={template}
+              onChange={(e) => setTemplate(e.target.value)}
+            >
+              {TEMPLATES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {analysis && (
           <div className="space-y-3 border-t border-border pt-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">Match analysis</p>
-              <p className="text-lg font-semibold text-accent">{analysis.score}%</p>
+              <p className="text-[0.9rem] font-medium">Match analysis</p>
+              <p className="text-[1.05rem] font-semibold text-accent">{analysis.score}%</p>
             </div>
             {analysis.strengths.length > 0 && (
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted mb-1">Strengths</p>
-                <ul className="list-inside list-disc text-sm space-y-0.5">
+                <p className="mb-1 text-[0.75rem] font-medium uppercase tracking-wider text-muted">
+                  Strengths
+                </p>
+                <ul className="list-inside list-disc space-y-0.5 text-[0.9rem]">
                   {analysis.strengths.map((s, i) => (
                     <li key={i}>{s}</li>
                   ))}
@@ -190,8 +227,10 @@ function GenerateInner() {
             )}
             {analysis.gaps.length > 0 && (
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted mb-1">Suggested edits</p>
-                <ul className="list-inside list-disc text-sm space-y-0.5 text-muted">
+                <p className="mb-1 text-[0.75rem] font-medium uppercase tracking-wider text-muted">
+                  Suggested edits
+                </p>
+                <ul className="list-inside list-disc space-y-0.5 text-[0.9rem] text-muted">
                   {analysis.gaps.map((g, i) => (
                     <li key={i}>{g}</li>
                   ))}
@@ -204,62 +243,44 @@ function GenerateInner() {
           </div>
         )}
 
-        <div>
-          <p className="label">Document type</p>
-          <div className="mt-1 flex flex-wrap gap-4">
-            <CircleCheckbox
-              checked={docType === "cv"}
-              onChange={() => setDocType("cv")}
-              label="CV / Resume"
-            />
-            <CircleCheckbox
-              checked={docType === "cover_letter"}
-              onChange={() => setDocType("cover_letter")}
-              label="Cover letter"
-            />
-          </div>
-        </div>
-
-        <div>
-          <p className="label">Template</p>
-          <div className="mt-1 flex flex-wrap gap-4">
-            {TEMPLATES.map((t) => (
-              <CircleCheckbox
-                key={t.id}
-                checked={template === t.id}
-                onChange={() => setTemplate(t.id)}
-                label={t.label}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-5 text-sm">
-          <TextAction type="submit" variant="primary" disabled={loading}>
-            {loading ? "Generating…" : docType === "cv" ? "Generate tailored CV" : "Generate cover letter"}
-          </TextAction>
-          <span className="text-muted">·</span>
-          <TextAction
-            type="button"
-            variant="secondary"
+        <div className="flex flex-wrap items-center gap-1 border-t border-border pt-5">
+          <IconButton
+            label={analyzing ? "Analyzing…" : "Analyze job"}
+            disabled={analyzing || !jd.trim()}
+            onClick={analyzeJob}
+          >
+            <ScanSearch className="h-4 w-4" />
+          </IconButton>
+          <IconButton
+            label={loading ? "Generating…" : "Generate"}
+            disabled={loading}
+            onClick={() => generate()}
+            active
+          >
+            <Sparkles className="h-4 w-4" />
+          </IconButton>
+          <IconButton
+            label="Save package"
             disabled={loading}
             onClick={() => {
               setDocType("cv");
               generate();
             }}
           >
-            Save package
-          </TextAction>
-          {loading && status && <span className="text-xs text-muted">Status: {status}</span>}
+            <Package className="h-4 w-4" />
+          </IconButton>
+          {loading && status && (
+            <span className="ml-2 text-[0.8rem] text-muted">Status: {status}</span>
+          )}
         </div>
       </form>
 
       {doc && (
         <section className="note-section space-y-2">
-          <p className="text-sm font-medium">{doc.title}</p>
-          <p className="text-xs text-muted capitalize">Status: {doc.status}</p>
+          <p className="text-[0.95rem] font-medium">{doc.title}</p>
+          <p className="text-[0.8rem] capitalize text-muted">Status: {doc.status}</p>
           {doc.status === "ready" && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.9rem]">
               <TextAction href={`/documents/${doc.id}`} variant="primary">
                 Open document
               </TextAction>
@@ -274,26 +295,25 @@ function GenerateInner() {
             </div>
           )}
           {doc.status === "failed" && (
-            <p className="text-sm text-danger">{doc.error_message || "Generation failed"}</p>
-          )}
-          {doc.matching_insights?.missing_skills && doc.matching_insights.missing_skills.length > 0 && (
-            <p className="text-xs text-muted">
-              Missing skills noted: {doc.matching_insights.missing_skills.join(", ")}
+            <p className="text-[0.9rem] text-danger">
+              {doc.error_message || "Generation failed"}
             </p>
           )}
+          {doc.matching_insights?.missing_skills &&
+            doc.matching_insights.missing_skills.length > 0 && (
+              <p className="text-[0.8rem] text-muted">
+                Missing skills noted: {doc.matching_insights.missing_skills.join(", ")}
+              </p>
+            )}
         </section>
       )}
-
-      <p className="text-xs text-muted">
-        All generation is unlimited. No quotas, no Pro gates.
-      </p>
     </div>
   );
 }
 
 export default function GeneratePage() {
   return (
-    <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
+    <Suspense fallback={<p className="text-[0.9rem] text-muted">Loading…</p>}>
       <GenerateInner />
     </Suspense>
   );

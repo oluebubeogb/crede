@@ -71,7 +71,7 @@ function LoginForm() {
           priority
           quality={100}
         />
-        <h1 className="mt-5 text-2xl font-semibold tracking-tight">
+        <h1 className="page-title mt-5">
           {mode === "login" ? "Welcome back" : "Create your account"}
         </h1>
         <p className="mt-2 text-center text-sm text-muted">

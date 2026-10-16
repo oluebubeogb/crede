@@ -105,7 +105,7 @@ export default function SkillsPage() {
   return (
     <div className="space-y-0">
       <section className="note-section">
-        <h1 className="text-2xl font-semibold tracking-tight">Skills</h1>
+        <h1 className="page-title">Skills</h1>
         <p className="mt-1.5 text-sm text-muted">
           Skills power matching and appear on generated CVs. Add a start date when you acquired each one.
         </p>
@@ -165,7 +165,7 @@ export default function SkillsPage() {
             aria-label="Start date or date acquired"
           />
           <button type="submit" className="text-action self-center">
-            {editId ? "Save" : "Add"}
+            {editId ? "Save" : "Add Skills"}
           </button>
           {editId && (
             <button type="button" className="text-action-muted self-center" onClick={resetForm}>

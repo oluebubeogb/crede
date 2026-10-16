@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Search, ShieldCheck } from "lucide-react";
+import { Search, ShieldCheck, UserRound, ListPlus, BadgeCheck } from "lucide-react";
+import { IconButton } from "@/components/ui/IconButton";
 import { TextAction } from "@/components/ui/TextAction";
 import { CircleCheckbox } from "@/components/ui/CircleCheckbox";
 
@@ -66,7 +67,7 @@ export default function CandidatesPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Candidates</h1>
+        <h1 className="page-title">Candidates</h1>
         <p className="mt-1 text-sm text-muted">
           Unlimited search across verified professional identities. Filter by verification score.
         </p>
@@ -142,25 +143,26 @@ export default function CandidatesPage() {
                   <span className="font-medium">{c.verification_score}</span>
                   <span className="text-muted">/100</span>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-sm">
+                <div className="flex flex-wrap items-center justify-end gap-0.5">
                   {c.username ? (
-                    <TextAction href={`/u/${c.username}`} variant="primary">
-                      View full profile
-                    </TextAction>
+                    <IconButton label="View full profile" href={`/u/${c.username}`}>
+                      <UserRound className="h-4 w-4" />
+                    </IconButton>
                   ) : (
-                    <span className="text-xs text-muted">No public URL</span>
+                    <IconButton label="No public profile" disabled>
+                      <UserRound className="h-4 w-4 opacity-40" />
+                    </IconButton>
                   )}
-                  <span className="text-muted">·</span>
-                  <TextAction
-                    variant={shortlist.has(c.id) ? "muted" : "secondary"}
+                  <IconButton
+                    label={shortlist.has(c.id) ? "On shortlist" : "Add to shortlist"}
+                    active={shortlist.has(c.id)}
                     onClick={() => toggleShortlist(c.id)}
                   >
-                    {shortlist.has(c.id) ? "● On shortlist" : "Add to shortlist"}
-                  </TextAction>
-                  <span className="text-muted">·</span>
-                  <TextAction href="/verification" variant="muted">
-                    Request more verification
-                  </TextAction>
+                    <ListPlus className="h-4 w-4" />
+                  </IconButton>
+                  <IconButton label="Request more verification" href="/verification">
+                    <BadgeCheck className="h-4 w-4" />
+                  </IconButton>
                 </div>
               </div>
             </article>

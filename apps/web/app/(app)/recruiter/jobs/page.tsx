@@ -72,7 +72,7 @@ export default function JobsPage() {
   return (
     <div className="w-full space-y-0">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Jobs</h1>
+        <h1 className="page-title">Jobs</h1>
         <p className="mt-1 text-muted">Post roles and match verified candidates.</p>
       </div>
 
