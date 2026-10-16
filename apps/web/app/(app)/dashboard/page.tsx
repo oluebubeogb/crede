@@ -78,14 +78,32 @@ function CircularMetric({
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const pct = Math.min(100, Math.max(0, (value / max) * 100));
-  const offset = c - (pct / 100) * c;
+  const targetOffset = c - (pct / 100) * c;
   const color =
     pct >= 80 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct >= 25 ? "#f59e0b" : "#ef4444";
+  const [offset, setOffset] = useState(targetOffset);
+  const [animKey, setAnimKey] = useState(0);
+
+  useEffect(() => {
+    setOffset(targetOffset);
+  }, [targetOffset]);
+
+  function play() {
+    setOffset(c);
+    // next frame animate to target
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setOffset(targetOffset));
+    });
+    setAnimKey((k) => k + 1);
+  }
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div
+      className="flex flex-col items-center gap-3"
+      onMouseEnter={play}
+    >
       <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="-rotate-90">
+        <svg width={size} height={size} className="-rotate-90" key={animKey}>
           <circle
             cx={size / 2}
             cy={size / 2}
@@ -105,7 +123,7 @@ function CircularMetric({
             strokeLinecap="round"
             strokeDasharray={c}
             strokeDashoffset={offset}
-            className="transition-all duration-700 ease-out"
+            style={{ transition: "stroke-dashoffset 0.85s ease-out" }}
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -387,13 +405,18 @@ export default function DashboardPage() {
           api<TimelineEntry[]>("/api/timeline").catch(() => [] as TimelineEntry[]),
           api<Skill[]>("/api/skills").catch(() => [] as Skill[]),
           api<Cert[]>("/api/certifications").catch(() => [] as Cert[]),
-          api<Doc[]>("/api/documents").catch(() => [] as Doc[]),
+          api<{ items?: Doc[] } | Doc[]>("/api/documents?page_size=50").catch(() => ({ items: [] })),
         ]);
         setData(dash);
         setEntries(Array.isArray(timeline) ? timeline : []);
         setSkills(Array.isArray(sk) ? sk : []);
         setCerts(Array.isArray(cert) ? cert : []);
-        setDocs(Array.isArray(documents) ? documents : []);
+        const docList = Array.isArray(documents)
+          ? documents
+          : Array.isArray((documents as any)?.items)
+            ? (documents as any).items
+            : [];
+        setDocs(docList);
       } catch {
         setSignedOut(true);
       } finally {

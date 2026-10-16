@@ -21,7 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <SearchBar />
         <main className="min-h-0 flex-1">
-          <div className="mx-auto w-full max-w-content px-4 py-6 sm:px-6 sm:py-8">
+          <div className="mx-auto w-full max-w-content px-4 py-8 sm:px-6 sm:py-10">
             {children}
           </div>
         </main>

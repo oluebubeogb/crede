@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
@@ -53,31 +54,40 @@ function LoginForm() {
 
   if (checking) {
     return (
-      <div className="card w-full max-w-md text-center">
+      <div className="w-full max-w-md text-center">
         <p className="text-sm text-muted">Checking session…</p>
       </div>
     );
   }
 
   return (
-    <div className="card w-full max-w-md">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-card bg-accent text-lg font-bold text-white">
-        C
+    <div className="w-full max-w-md">
+      <div className="flex flex-col items-center border-b border-border pb-8">
+        <Image
+          src="/icons/logo-128.png"
+          alt="Crede"
+          width={48}
+          height={48}
+          priority
+          quality={100}
+        />
+        <h1 className="mt-5 text-2xl font-semibold tracking-tight">
+          {mode === "login" ? "Welcome back" : "Create your account"}
+        </h1>
+        <p className="mt-2 text-center text-sm text-muted">
+          {mode === "login"
+            ? "Sign in to your Crede professional identity."
+            : "Build your verified career timeline in minutes."}
+        </p>
       </div>
-      <h1 className="mt-6 text-center text-2xl font-semibold">
-        {mode === "login" ? "Welcome back" : "Create your account"}
-      </h1>
-      <p className="mt-2 text-center text-sm text-muted">
-        {mode === "login"
-          ? "Sign in to your Crede professional identity."
-          : "Build your verified career timeline in minutes."}
-      </p>
 
-      <div className="mt-6 flex rounded-card border border-border p-1">
+      <div className="mt-6 flex border-b border-border">
         <button
           type="button"
-          className={`flex-1 rounded-card py-2 text-sm font-medium transition ${
-            mode === "login" ? "bg-accent text-white" : "text-muted"
+          className={`flex-1 border-b-2 py-2.5 text-sm font-medium transition ${
+            mode === "login"
+              ? "border-accent text-accent"
+              : "border-transparent text-muted hover:text-foreground"
           }`}
           onClick={() => {
             setMode("login");
@@ -88,8 +98,10 @@ function LoginForm() {
         </button>
         <button
           type="button"
-          className={`flex-1 rounded-card py-2 text-sm font-medium transition ${
-            mode === "signup" ? "bg-accent text-white" : "text-muted"
+          className={`flex-1 border-b-2 py-2.5 text-sm font-medium transition ${
+            mode === "signup"
+              ? "border-accent text-accent"
+              : "border-transparent text-muted hover:text-foreground"
           }`}
           onClick={() => {
             setMode("signup");
@@ -100,7 +112,7 @@ function LoginForm() {
         </button>
       </div>
 
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+      <form onSubmit={onSubmit} className="mt-6 space-y-5">
         {mode === "signup" && (
           <div>
             <label className="label" htmlFor="fullName">
@@ -149,7 +161,7 @@ function LoginForm() {
           )}
         </div>
         {error && <p className="text-sm text-danger">{error}</p>}
-        <button type="submit" className="text-action w-full" disabled={loading}>
+        <button type="submit" className="text-action w-full text-left" disabled={loading}>
           {loading
             ? mode === "signup"
               ? "Creating account…"
@@ -160,7 +172,7 @@ function LoginForm() {
         </button>
       </form>
 
-      <p className="mt-6 text-center text-xs text-muted">
+      <p className="mt-8 border-t border-border pt-6 text-center text-xs text-muted">
         <Link href="/" className="text-accent hover:underline">
           Back to home
         </Link>
@@ -171,10 +183,12 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
       <Suspense
         fallback={
-          <div className="card w-full max-w-md text-center text-sm text-muted">Loading…</div>
+          <div className="w-full max-w-md text-center">
+            <p className="text-sm text-muted">Loading…</p>
+          </div>
         }
       >
         <LoginForm />

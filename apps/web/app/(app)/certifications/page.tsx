@@ -83,9 +83,12 @@ export default function CertificationsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Certifications</h1>
-      <form onSubmit={add} className="card grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-0">
+      <section className="note-section">
+        <h1 className="text-2xl font-semibold tracking-tight">Certifications</h1>
+        <p className="mt-1.5 text-sm text-muted">Credentials with issuance dates for your verified profile.</p>
+      </section>
+      <form onSubmit={add} className="note-section grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <input
           className="input"
           placeholder="Name"
@@ -120,7 +123,7 @@ export default function CertificationsPage() {
       </form>
       <div className="grid gap-4 sm:grid-cols-2">
         {items.map((c) => (
-          <div key={c.id} className="card">
+          <div key={c.id} className="note-section py-4">
             <p className="font-medium">{c.name}</p>
             <p className="text-sm text-muted">{c.issuer}</p>
             {formatDate(c.issued_at) && (

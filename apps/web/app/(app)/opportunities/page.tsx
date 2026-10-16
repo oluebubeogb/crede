@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from "react";
 import { api } from "@/lib/api";
 import { TextAction } from "@/components/ui/TextAction";
 import { CircleCheckbox } from "@/components/ui/CircleCheckbox";
+import { IconButton } from "@/components/ui/IconButton";
+import { ChevronDown, ChevronUp, FileText, Heart } from "lucide-react";
 
 type Opp = {
   match_id: number | null;
@@ -54,7 +56,12 @@ export default function OpportunitiesPage() {
       }
       if (filters.senior) {
         const t = (item.job.title || "").toLowerCase();
-        if (!t.includes("senior") && !t.includes("lead") && !t.includes("principal") && !t.includes("director"))
+        if (
+          !t.includes("senior") &&
+          !t.includes("lead") &&
+          !t.includes("principal") &&
+          !t.includes("director")
+        )
           return false;
       }
       return true;
@@ -71,24 +78,25 @@ export default function OpportunitiesPage() {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Opportunities</h1>
-        <p className="text-sm text-muted">Loading matched roles…</p>
+      <div className="space-y-0">
+        <section className="note-section">
+          <h1 className="text-2xl font-semibold tracking-tight">Opportunities</h1>
+          <p className="mt-1.5 text-sm text-muted">Loading matched roles…</p>
+        </section>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <header>
+    <div className="space-y-0">
+      <section className="note-section">
         <h1 className="text-2xl font-semibold tracking-tight">Opportunities</h1>
-        <p className="mt-1 text-sm text-muted">
-          Personalized open roles based on your verified timeline and skills. Unlimited matching for every user.
+        <p className="mt-1.5 text-sm text-muted">
+          Personalized open roles based on your verified timeline and skills.
         </p>
-      </header>
+      </section>
 
-      {/* Filters via CircleCheckboxes */}
-      <div className="card">
+      <section className="note-section">
         <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">Filters</p>
         <div className="flex flex-wrap gap-4">
           {FILTERS.map((f) => (
@@ -100,22 +108,22 @@ export default function OpportunitiesPage() {
             />
           ))}
         </div>
-      </div>
+      </section>
 
       {error && (
-        <div className="rounded-card border border-danger bg-surface px-4 py-3 text-sm text-danger">
-          {error}
-        </div>
+        <section className="note-section">
+          <p className="text-sm text-danger">{error}</p>
+        </section>
       )}
 
       {!error && filtered.length === 0 && (
-        <div className="card flex flex-col items-start gap-3">
+        <section className="note-section">
           <p className="text-sm text-muted">
             {items.length === 0
               ? "No matched opportunities yet. Complete your timeline and skills — when recruiters post open roles, matches appear here."
               : "No opportunities match the current filters."}
           </p>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <TextAction href="/timeline" variant="primary">
               Complete timeline
             </TextAction>
@@ -132,15 +140,15 @@ export default function OpportunitiesPage() {
               </>
             )}
           </div>
-        </div>
+        </section>
       )}
 
-      <div className="space-y-3">
+      <div>
         {filtered.map((item) => {
           const isExp = expanded === item.job.id;
           const isInt = interested.has(item.job.id);
           return (
-            <article key={`${item.job.id}-${item.match_id ?? "x"}`} className="card">
+            <article key={`${item.job.id}-${item.match_id ?? "x"}`} className="note-section">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <h2 className="text-base font-medium">{item.job.title}</h2>
@@ -165,7 +173,7 @@ export default function OpportunitiesPage() {
               {isExp && (
                 <div className="mt-4 space-y-2 border-t border-border pt-4 text-sm">
                   {item.job.description && (
-                    <p className="text-foreground line-clamp-6">{item.job.description}</p>
+                    <p className="line-clamp-6 text-foreground">{item.job.description}</p>
                   )}
                   {item.reasons && item.reasons.length > 0 && (
                     <div>
@@ -182,28 +190,31 @@ export default function OpportunitiesPage() {
                 </div>
               )}
 
-              <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                <TextAction
-                  variant="muted"
+              <div className="mt-4 flex flex-wrap items-center gap-1">
+                <IconButton
+                  label={isExp ? "Hide details" : "View details"}
                   onClick={() => setExpanded(isExp ? null : item.job.id)}
+                  active={isExp}
                 >
-                  {isExp ? "Hide details" : "View details"}
-                </TextAction>
-                <span className="text-muted">·</span>
-                <TextAction
+                  {isExp ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </IconButton>
+                <IconButton
+                  label="Generate tailored materials"
                   href={`/generate?job=${item.job.id}&title=${encodeURIComponent(item.job.title)}`}
-                  variant="primary"
                 >
-                  Generate tailored materials
-                </TextAction>
-                <span className="text-muted">·</span>
-                {isInt ? (
-                  <span className="text-success text-sm">● Marked interested</span>
-                ) : (
-                  <TextAction variant="secondary" onClick={() => markInterested(item.job.id)}>
-                    Mark interested
-                  </TextAction>
-                )}
+                  <FileText className="h-4 w-4" />
+                </IconButton>
+                <IconButton
+                  label={isInt ? "Marked interested" : "Mark interested"}
+                  active={isInt}
+                  onClick={() => markInterested(item.job.id)}
+                >
+                  <Heart className={`h-4 w-4 ${isInt ? "fill-current" : ""}`} />
+                </IconButton>
               </div>
             </article>
           );

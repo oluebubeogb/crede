@@ -3,27 +3,29 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --surface: #f8fafc;
-  --border: #e2e8f0;
-  --foreground: #0f172a;
-  --muted: #64748b;
+  --background: #fafafa;
+  --surface: #ffffff;
+  --border: #e4e4e7;
+  --foreground: #18181b;
+  --muted: #71717a;
   --accent: #2563eb;
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
+  color-scheme: light;
 }
 
 .dark {
   --background: #09090b;
-  --surface: #18181b;
+  --surface: #0f0f12;
   --border: #27272a;
   --foreground: #fafafa;
   --muted: #a1a1aa;
   --accent: #3b82f6;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  color-scheme: dark;
 }
 
 html,
@@ -31,15 +33,26 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Inter, system-ui, sans-serif;
+  min-height: 100%;
+}
+
+/* Ensure dark mode paints the full canvas, not leftover white */
+html.dark,
+html.dark body {
+  background: var(--background);
+  color: var(--foreground);
 }
 
 @layer components {
+  /* Notebook feel: bottom rule only, no filled boxes */
   .card {
-    @apply rounded-card border border-border bg-surface p-5;
+    @apply border-b border-border bg-transparent py-5;
+    border-radius: 0;
   }
 
   .input {
-    @apply h-11 w-full rounded-card border border-border bg-background px-3 text-sm outline-none transition;
+    @apply h-11 w-full border border-border bg-background px-3 text-sm text-foreground outline-none transition;
+    border-radius: 10px;
   }
   .input:focus {
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
@@ -76,5 +89,26 @@ body {
   .score-ring {
     @apply relative flex items-center justify-center rounded-full;
     border: 2px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+
+  /* Status badges */
+  .badge-verified {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+    background-color: color-mix(in srgb, var(--success) 18%, transparent);
+    color: var(--success);
+  }
+  .badge-unverified {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+    background-color: color-mix(in srgb, var(--border) 80%, transparent);
+    color: var(--muted);
+  }
+  .badge-pending {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+    background-color: color-mix(in srgb, var(--warning) 18%, transparent);
+    color: var(--warning);
+  }
+
+  .note-section {
+    @apply border-b border-border pb-8 pt-2;
   }
 }
