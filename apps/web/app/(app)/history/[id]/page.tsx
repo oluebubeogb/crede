@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -13,6 +13,7 @@ import {
   Download,
   Trash2,
   AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +62,115 @@ const SECTIONS: { id: Section; label: string; icon: typeof FileText }[] = [
   { id: "danger", label: "Danger zone", icon: Trash2 },
 ];
 
+const TEMPLATES = [
+  { id: "professional", label: "Professional" },
+  { id: "modern", label: "Modern" },
+  { id: "compact", label: "Compact" },
+];
+
+/** Lightweight JD renderer: headings, bullets, emphasis — without raw # / * noise. */
+function JdRendered({ text }: { text: string }) {
+  const lines = (text || "").split("\n");
+  const blocks: React.ReactNode[] = [];
+  let listItems: string[] = [];
+
+  function flushList(key: string) {
+    if (listItems.length === 0) return;
+    blocks.push(
+      <ul key={key} className="my-2 list-inside list-disc space-y-0.5 text-sm text-foreground">
+        {listItems.map((item, i) => (
+          <li key={i}>{inlineMd(item)}</li>
+        ))}
+      </ul>
+    );
+    listItems = [];
+  }
+
+  function inlineMd(s: string): React.ReactNode {
+    const parts: React.ReactNode[] = [];
+    let rest = s;
+    let k = 0;
+    const re = /(\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__|_(.+?)_)/;
+    while (rest.length) {
+      const m = re.exec(rest);
+      if (!m || m.index === undefined) {
+        parts.push(rest);
+        break;
+      }
+      if (m.index > 0) parts.push(rest.slice(0, m.index));
+      const bold = m[2] || m[4];
+      const ital = m[3] || m[5];
+      if (bold) {
+        parts.push(
+          <strong key={k++} className="font-semibold">
+            {bold}
+          </strong>
+        );
+      } else if (ital) {
+        parts.push(
+          <em key={k++} className="italic">
+            {ital}
+          </em>
+        );
+      }
+      rest = rest.slice(m.index + m[0].length);
+    }
+    return parts.length === 1 ? parts[0] : <>{parts}</>;
+  }
+
+  lines.forEach((raw, idx) => {
+    const line = raw.replace(/\r$/, "");
+    const trimmed = line.trim();
+
+    const isList =
+      /^([*•\-])\s+/.test(trimmed) || /^\d+[\.\)]\s+/.test(trimmed);
+
+    if (isList) {
+      const content = trimmed.replace(/^([*•\-])\s+/, "").replace(/^\d+[\.\)]\s+/, "");
+      listItems.push(content);
+      return;
+    }
+    flushList(`ul-${idx}`);
+
+    if (!trimmed) {
+      blocks.push(<div key={`br-${idx}`} className="h-2" />);
+      return;
+    }
+
+    const h = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (h) {
+      const level = h[1].length;
+      const content = h[2].replace(/[#*]+$/, "").trim();
+      const cls =
+        level <= 1
+          ? "mt-3 text-base font-semibold text-foreground"
+          : level === 2
+            ? "mt-2.5 text-sm font-semibold text-foreground"
+            : "mt-2 text-sm font-medium text-foreground";
+      blocks.push(
+        <p key={`h-${idx}`} className={cls}>
+          {inlineMd(content)}
+        </p>
+      );
+      return;
+    }
+
+    if (/^[-*_]{3,}$/.test(trimmed)) {
+      blocks.push(<hr key={`hr-${idx}`} className="my-3 border-border" />);
+      return;
+    }
+
+    blocks.push(
+      <p key={`p-${idx}`} className="text-sm leading-relaxed text-foreground">
+        {inlineMd(trimmed)}
+      </p>
+    );
+  });
+  flushList("ul-end");
+
+  return <div className="space-y-0.5">{blocks}</div>;
+}
+
 export default function HistoryDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -73,6 +183,10 @@ export default function HistoryDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
+  const [generating, setGenerating] = useState<"cv" | "cover_letter" | "analysis" | null>(null);
+  const [genStatus, setGenStatus] = useState<string | null>(null);
+  const [template, setTemplate] = useState("professional");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
     if (!id || Number.isNaN(id)) return;
@@ -82,7 +196,6 @@ export default function HistoryDetailPage() {
       .get<HistoryDetail>(`/history/${id}`)
       .then((d) => {
         setData(d);
-        setActive("analysis");
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : "Failed to load history");
@@ -92,10 +205,88 @@ export default function HistoryDetailPage() {
 
   useEffect(() => {
     load();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, [load]);
 
   const cvDoc = data?.documents.find((d) => d.doc_type === "cv");
   const clDoc = data?.documents.find((d) => d.doc_type === "cover_letter");
+
+  async function pollUntilReady(docId: number) {
+    const maxAttempts = 60;
+    let attempts = 0;
+    return new Promise<void>((resolve, reject) => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        attempts += 1;
+        try {
+          const d = await api.get<Doc>(`/documents/${docId}`);
+          setGenStatus(d.status || "processing");
+          if (d.status === "ready" || d.status === "failed") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            if (d.status === "failed") {
+              reject(new Error(d.error_message || "Generation failed"));
+            } else {
+              resolve();
+            }
+          } else if (attempts >= maxAttempts) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            reject(new Error("Generation timed out — refresh to check status"));
+          }
+        } catch (e) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          reject(e instanceof Error ? e : new Error("Poll failed"));
+        }
+      }, 2000);
+    });
+  }
+
+  async function generateDoc(docType: "cv" | "cover_letter") {
+    if (!data) return;
+    setGenerating(docType);
+    setGenStatus("starting…");
+    setError(null);
+    try {
+      const res = await api.post<{
+        document_id: number;
+        status: string;
+        history_id?: number;
+      }>("/generate", {
+        history_id: data.id,
+        job_description: data.job_description,
+        doc_type: docType,
+        template,
+      });
+      setGenStatus(res.status || "pending");
+      await pollUntilReady(res.document_id);
+      load();
+      setActive(docType === "cv" ? "cv" : "cover_letter");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Generation failed");
+    } finally {
+      setGenerating(null);
+      setGenStatus(null);
+    }
+  }
+
+  async function runAnalysis() {
+    if (!data) return;
+    setGenerating("analysis");
+    setError(null);
+    try {
+      const updated = await api.post<HistoryDetail>(`/history/${data.id}/analyze`);
+      setData(updated);
+      setActive("analysis");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Analysis failed");
+    } finally {
+      setGenerating(null);
+    }
+  }
 
   async function handleDelete() {
     if (!data) return;
@@ -147,16 +338,93 @@ export default function HistoryDetailPage() {
     );
   }
 
-  if (error || !data) {
+  if (error && !data) {
     return (
       <div className="space-y-0">
         <section className="note-section">
           <h1 className="page-title">History</h1>
-          <p className="mt-2 text-sm text-danger">{error || "Not found"}</p>
+          <p className="mt-2 text-sm text-danger">{error}</p>
           <TextAction href="/history" variant="muted" className="mt-3">
             Back to history
           </TextAction>
         </section>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  function DocActions({ doc }: { doc: Doc }) {
+    return (
+      <>
+        <p className="text-sm font-medium">{doc.title}</p>
+        <p className="text-xs capitalize text-muted">
+          Status: {doc.status || "ready"} · Template: {doc.template}
+        </p>
+        {(doc.status === "ready" || !doc.status) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <TextAction href={`/documents/${doc.id}`} variant="primary">
+              Open document
+            </TextAction>
+            <span className="text-muted">·</span>
+            <TextAction href={`/backend/api/documents/${doc.id}/download.pdf`} variant="muted">
+              Download PDF
+            </TextAction>
+            <span className="text-muted">·</span>
+            <TextAction href={`/backend/api/documents/${doc.id}/download.docx`} variant="muted">
+              Download DOCX
+            </TextAction>
+          </div>
+        )}
+        {doc.status === "failed" && (
+          <p className="text-sm text-danger">{doc.error_message || "Generation failed"}</p>
+        )}
+        {(doc.status === "pending" || doc.status === "processing") && (
+          <p className="text-sm text-muted">Still generating… refresh in a moment.</p>
+        )}
+      </>
+    );
+  }
+
+  function GenerateControls({ docType }: { docType: "cv" | "cover_letter" }) {
+    const busy = generating === docType;
+    return (
+      <div className="mt-3 space-y-3 rounded-card border border-border p-3">
+        <p className="text-sm text-muted">
+          No {docType === "cv" ? "CV" : "cover letter"} linked to this job description yet.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="label" htmlFor={`tpl-${docType}`}>
+              Template
+            </label>
+            <select
+              id={`tpl-${docType}`}
+              className="input"
+              value={template}
+              disabled={!!generating}
+              onChange={(e) => setTemplate(e.target.value)}
+            >
+              {TEMPLATES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            disabled={!!generating}
+            onClick={() => generateDoc(docType)}
+            className="inline-flex items-center gap-1.5 rounded-card bg-accent px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            <Sparkles className="h-4 w-4" />
+            {busy ? "Generating…" : `Generate ${docType === "cv" ? "CV" : "cover letter"}`}
+          </button>
+        </div>
+        {busy && genStatus && (
+          <p className="text-xs text-muted">Status: {genStatus}</p>
+        )}
       </div>
     );
   }
@@ -175,6 +443,12 @@ export default function HistoryDetailPage() {
           ← All history
         </TextAction>
       </section>
+
+      {error && (
+        <section className="note-section">
+          <p className="text-sm text-danger">{error}</p>
+        </section>
+      )}
 
       <div className="flex min-h-[60vh] border-b border-border">
         <aside
@@ -233,13 +507,20 @@ export default function HistoryDetailPage() {
           {active === "job_description" && (
             <div className="space-y-3">
               <h2 className="text-sm font-medium">Job description</h2>
-              <textarea
-                className="input min-h-[320px] py-3 font-mono text-sm"
-                readOnly
-                value={data.job_description}
-              />
+              <div className="rounded-card border border-border bg-background p-4">
+                <JdRendered text={data.job_description} />
+              </div>
+              <details className="text-xs text-muted">
+                <summary className="cursor-pointer hover:text-foreground">View raw text</summary>
+                <textarea
+                  className="input mt-2 min-h-[160px] py-3 font-mono text-sm"
+                  readOnly
+                  value={data.job_description}
+                />
+              </details>
               <p className="text-xs text-muted">
-                Exact content that was processed. You can copy it back into{" "}
+                Exact content that was processed. Headings and bullets are cleaned for display;
+                raw text is available above if you need to copy it into{" "}
                 <Link href="/generate" className="text-accent hover:underline">
                   Generate Files
                 </Link>
@@ -250,14 +531,25 @@ export default function HistoryDetailPage() {
 
           {active === "analysis" && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-medium">Match analysis</h2>
                 {data.analysis?.score != null && (
                   <p className="text-base font-semibold text-accent">{data.analysis.score}%</p>
                 )}
               </div>
               {!data.analysis && (
-                <p className="text-sm text-muted">No analysis was saved for this session.</p>
+                <div className="space-y-3">
+                  <p className="text-sm text-muted">No analysis was saved for this session.</p>
+                  <button
+                    type="button"
+                    disabled={generating === "analysis"}
+                    onClick={runAnalysis}
+                    className="inline-flex items-center gap-1.5 rounded-card bg-accent px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    <ScanSearch className="h-4 w-4" />
+                    {generating === "analysis" ? "Analyzing…" : "Run analysis"}
+                  </button>
+                </div>
               )}
               {data.analysis?.strengths && data.analysis.strengths.length > 0 && (
                 <div>
@@ -286,110 +578,32 @@ export default function HistoryDetailPage() {
                   </TextAction>
                 </div>
               )}
+              {data.analysis && (
+                <button
+                  type="button"
+                  disabled={generating === "analysis"}
+                  onClick={runAnalysis}
+                  className="text-xs text-muted hover:text-foreground"
+                >
+                  {generating === "analysis" ? "Re-analyzing…" : "Re-run analysis"}
+                </button>
+              )}
             </div>
           )}
 
           {active === "cv" && (
             <div className="space-y-3">
               <h2 className="text-sm font-medium">CV / Resume</h2>
-              {!cvDoc && (
-                <p className="text-sm text-muted">
-                  No CV was generated for this job description yet.{" "}
-                  <Link href="/generate" className="text-accent hover:underline">
-                    Generate one
-                  </Link>
-                  .
-                </p>
-              )}
-              {cvDoc && (
-                <>
-                  <p className="text-sm font-medium">{cvDoc.title}</p>
-                  <p className="text-xs capitalize text-muted">
-                    Status: {cvDoc.status || "ready"} · Template: {cvDoc.template}
-                  </p>
-                  {cvDoc.status === "ready" && (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                      <TextAction href={`/documents/${cvDoc.id}`} variant="primary">
-                        Open document
-                      </TextAction>
-                      <span className="text-muted">·</span>
-                      <TextAction
-                        href={`/backend/api/documents/${cvDoc.id}/download.pdf`}
-                        variant="muted"
-                      >
-                        Download PDF
-                      </TextAction>
-                      <span className="text-muted">·</span>
-                      <TextAction
-                        href={`/backend/api/documents/${cvDoc.id}/download.docx`}
-                        variant="muted"
-                      >
-                        Download DOCX
-                      </TextAction>
-                    </div>
-                  )}
-                  {cvDoc.status === "failed" && (
-                    <p className="text-sm text-danger">
-                      {cvDoc.error_message || "Generation failed"}
-                    </p>
-                  )}
-                  {(cvDoc.status === "pending" || cvDoc.status === "processing") && (
-                    <p className="text-sm text-muted">Still generating… refresh in a moment.</p>
-                  )}
-                </>
-              )}
+              {!cvDoc && <GenerateControls docType="cv" />}
+              {cvDoc && <DocActions doc={cvDoc} />}
             </div>
           )}
 
           {active === "cover_letter" && (
             <div className="space-y-3">
               <h2 className="text-sm font-medium">Cover letter</h2>
-              {!clDoc && (
-                <p className="text-sm text-muted">
-                  No cover letter was generated for this job description yet.{" "}
-                  <Link href="/generate" className="text-accent hover:underline">
-                    Generate one
-                  </Link>
-                  .
-                </p>
-              )}
-              {clDoc && (
-                <>
-                  <p className="text-sm font-medium">{clDoc.title}</p>
-                  <p className="text-xs capitalize text-muted">
-                    Status: {clDoc.status || "ready"} · Template: {clDoc.template}
-                  </p>
-                  {clDoc.status === "ready" && (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                      <TextAction href={`/documents/${clDoc.id}`} variant="primary">
-                        Open document
-                      </TextAction>
-                      <span className="text-muted">·</span>
-                      <TextAction
-                        href={`/backend/api/documents/${clDoc.id}/download.pdf`}
-                        variant="muted"
-                      >
-                        Download PDF
-                      </TextAction>
-                      <span className="text-muted">·</span>
-                      <TextAction
-                        href={`/backend/api/documents/${clDoc.id}/download.docx`}
-                        variant="muted"
-                      >
-                        Download DOCX
-                      </TextAction>
-                    </div>
-                  )}
-                  {clDoc.status === "failed" && (
-                    <p className="text-sm text-danger">
-                      {clDoc.error_message || "Generation failed"}
-                    </p>
-                  )}
-                  {(clDoc.status === "pending" || clDoc.status === "processing") && (
-                    <p className="text-sm text-muted">Still generating… refresh in a moment.</p>
-                  )}
-                </>
-              )}
+              {!clDoc && <GenerateControls docType="cover_letter" />}
+              {clDoc && <DocActions doc={clDoc} />}
             </div>
           )}
 

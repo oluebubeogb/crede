@@ -25,13 +25,33 @@ router = APIRouter(tags=["documents"])
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 
+def _strip_md_markers(s: str) -> str:
+    """Remove common markdown/heading markers so titles aren't '# Role' or '* Company'."""
+    if not s:
+        return s
+    s = s.strip()
+    # Leading heading / list markers: # ## ###, *, -, •, numbered lists
+    s = re.sub(r"^[\s#*_•\-]+", "", s)
+    s = re.sub(r"^\d+[\.\)]\s*", "", s)
+    # Trailing emphasis
+    s = re.sub(r"[\s*_#]+$", "", s)
+    # Inline bold/italic leftovers around whole phrase
+    s = re.sub(r"^\*{1,2}(.+?)\*{1,2}$", r"\1", s)
+    s = re.sub(r"^_{1,2}(.+?)_{1,2}$", r"\1", s)
+    # Collapse internal runs of # or * used as decoration
+    s = re.sub(r"[#*]{2,}", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 def _extract_job_meta(jd: str) -> tuple[Optional[str], Optional[str]]:
-    """Best-effort job title + organization from a pasted JD."""
+    """Best-effort job title + organization from a pasted JD (markdown-aware)."""
     text = (jd or "").strip()
     title = None
     org = None
     patterns_title = [
         r"(?i)(?:job\s*title|position|role|vacancy)\s*[:\-]\s*(.+)",
+        r"(?i)^#{1,6}\s*(.+)$",  # markdown heading as title candidate
         r"(?i)^title\s*[:\-]\s*(.+)",
     ]
     patterns_org = [
@@ -41,20 +61,30 @@ def _extract_job_meta(jd: str) -> tuple[Optional[str], Optional[str]]:
     for pat in patterns_title:
         m = re.search(pat, text, re.M)
         if m:
-            title = m.group(1).strip().split("\n")[0][:120]
-            break
+            candidate = _strip_md_markers(m.group(1).strip().split("\n")[0])[:120]
+            # Skip pure marker noise or very short leftovers
+            if candidate and len(candidate) >= 3 and not re.match(r"^[\W_]+$", candidate):
+                title = candidate
+                break
     if not title:
-        # first non-empty line if short enough
+        # first non-empty line if short enough (strip md first)
         for line in text.splitlines():
-            line = line.strip()
-            if 8 <= len(line) <= 80 and not line.lower().startswith(("we are", "about", "the ")):
+            line = _strip_md_markers(line.strip())
+            if not line:
+                continue
+            low = line.lower()
+            if 8 <= len(line) <= 80 and not low.startswith(
+                ("we are", "about", "the ", "responsibilities", "requirements", "qualifications")
+            ):
                 title = line[:120]
                 break
     for pat in patterns_org:
         m = re.search(pat, text, re.M)
         if m:
-            org = m.group(1).strip().split("\n")[0][:120]
-            break
+            candidate = _strip_md_markers(m.group(1).strip().split("\n")[0])[:120]
+            if candidate and len(candidate) >= 2:
+                org = candidate
+                break
     return title, org
 
 
@@ -280,7 +310,13 @@ def _get_or_create_history(
         .first()
     )
     job_title, org = _extract_job_meta(job_description)
-    title = job_title or (job_description.strip().splitlines()[0][:80] if job_description.strip() else "Untitled JD")
+    if job_title:
+        title = job_title
+    elif job_description.strip():
+        first = _strip_md_markers(job_description.strip().splitlines()[0])[:80]
+        title = first if first else "Untitled JD"
+    else:
+        title = "Untitled JD"
     if existing:
         if analysis is not None:
             existing.analysis = analysis
@@ -447,17 +483,53 @@ async def generate_cv(
     """
     Accept generation and run LLM in the background.
     Auto-saves the JD into GenerationHistory and links the document.
+    Pass history_id to attach to an existing history entry (e.g. from History detail).
     Client should poll GET /api/documents/{id} until status is ready|failed.
     """
     if not profile.timeline_entries and body.doc_type != "bio":
         raise HTTPException(400, "Add at least one career timeline entry before generating")
 
-    job_title, org = _extract_job_meta(body.job_description)
+    history: Optional[GenerationHistory] = None
+    jd = (body.job_description or "").strip()
+
+    if body.history_id:
+        history = (
+            db.query(GenerationHistory)
+            .filter(
+                GenerationHistory.id == body.history_id,
+                GenerationHistory.profile_id == profile.id,
+            )
+            .first()
+        )
+        if not history:
+            raise HTTPException(404, "History entry not found")
+        # Prefer explicit JD from body; otherwise use the saved one
+        if not jd:
+            jd = history.job_description or ""
+        elif jd and jd != history.job_description:
+            # Keep history JD as source of truth when mapping from history page
+            # but allow regenerate with same content
+            pass
+
+    if len(jd) < 20:
+        raise HTTPException(400, "Job description is required (paste one or open a history entry)")
+
+    job_title, org = _extract_job_meta(jd)
     title = _doc_title(body.doc_type or "cv", job_title, profile.full_name or profile.email)
 
-    # Auto-save JD + analysis into history
-    analysis = _compute_analysis(body.job_description)
-    history = _get_or_create_history(db, profile, body.job_description, analysis=analysis)
+    analysis = _compute_analysis(jd)
+    if history:
+        # Refresh analysis / meta on the existing entry
+        if not history.analysis:
+            history.analysis = analysis
+        if job_title:
+            history.title = job_title
+        if org:
+            history.organization = org
+        db.commit()
+        db.refresh(history)
+    else:
+        history = _get_or_create_history(db, profile, jd, analysis=analysis)
 
     doc = GeneratedDocument(
         profile_id=profile.id,
@@ -465,11 +537,11 @@ async def generate_cv(
         title=title,
         doc_type=body.doc_type or "cv",
         template=body.template or "professional",
-        job_description_hash=jd_hash(body.job_description),
+        job_description_hash=jd_hash(jd),
         status="pending",
         target_job_title=job_title,
         target_organization=org,
-        content_snapshot={"status": "pending", "job_description_preview": body.job_description[:500]},
+        content_snapshot={"status": "pending", "job_description_preview": jd[:500]},
     )
     db.add(doc)
     db.commit()
@@ -479,7 +551,7 @@ async def generate_cv(
         _run_generate_job,
         doc.id,
         profile.id,
-        body.job_description,
+        jd,
         body.doc_type or "cv",
         body.template or "professional",
     )
@@ -565,6 +637,46 @@ def create_or_update_history(
     else:
         analysis = _compute_analysis(body.job_description)
     hist = _get_or_create_history(db, profile, body.job_description, analysis=analysis)
+    docs = (
+        db.query(GeneratedDocument)
+        .filter(GeneratedDocument.history_id == hist.id, GeneratedDocument.profile_id == profile.id)
+        .order_by(GeneratedDocument.created_at.desc())
+        .all()
+    )
+    return HistoryDetail(
+        id=hist.id,
+        title=hist.title,
+        organization=hist.organization,
+        job_description=hist.job_description,
+        analysis=hist.analysis,
+        created_at=hist.created_at,
+        updated_at=hist.updated_at,
+        documents=[_doc_out(d) for d in docs],
+    )
+
+
+@router.post("/history/{history_id}/analyze", response_model=HistoryDetail)
+def analyze_history(
+    history_id: int,
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Recompute and save match analysis for an existing history entry."""
+    hist = (
+        db.query(GenerationHistory)
+        .filter(GenerationHistory.id == history_id, GenerationHistory.profile_id == profile.id)
+        .first()
+    )
+    if not hist:
+        raise HTTPException(404, "History entry not found")
+    hist.analysis = _compute_analysis(hist.job_description or "")
+    job_title, org = _extract_job_meta(hist.job_description or "")
+    if job_title:
+        hist.title = job_title
+    if org:
+        hist.organization = org
+    db.commit()
+    db.refresh(hist)
     docs = (
         db.query(GeneratedDocument)
         .filter(GeneratedDocument.history_id == hist.id, GeneratedDocument.profile_id == profile.id)

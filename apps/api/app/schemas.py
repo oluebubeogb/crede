@@ -112,9 +112,11 @@ class VerificationOut(BaseModel):
 
 
 class GenerateCVRequest(BaseModel):
-    job_description: str = Field(..., min_length=40)
+    job_description: str = Field(default="", min_length=0)
     template: str = "professional"  # modern|executive|professional|minimal
     doc_type: str = "cv"  # cv|cover_letter|bio
+    # When set, attach the new document to this history entry and use its JD if body JD is empty
+    history_id: Optional[int] = None
 
 
 class MatchingInsights(BaseModel):
