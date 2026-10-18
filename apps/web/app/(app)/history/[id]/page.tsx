@@ -13,7 +13,6 @@ import {
   Download,
   Trash2,
   AlertTriangle,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -227,14 +226,14 @@ export default function HistoryDetailPage() {
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;
             if (d.status === "failed") {
-              reject(new Error(d.error_message || "Generation failed"));
+              reject(new Error(d.error_message || "Something went wrong while generating. You can try again from this page."));
             } else {
               resolve();
             }
           } else if (attempts >= maxAttempts) {
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;
-            reject(new Error("Generation timed out — refresh to check status"));
+            reject(new Error("Still working on your file — it should appear here in a moment. You can refresh this page."));
           }
         } catch (e) {
           if (pollRef.current) clearInterval(pollRef.current);
@@ -266,7 +265,7 @@ export default function HistoryDetailPage() {
       load();
       setActive(docType === "cv" ? "cv" : "cover_letter");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Generation failed");
+      setError(e instanceof Error ? e.message : "Taking longer than usual — refresh in a moment to see your file.");
     } finally {
       setGenerating(null);
       setGenStatus(null);
@@ -377,7 +376,7 @@ export default function HistoryDetailPage() {
           </div>
         )}
         {doc.status === "failed" && (
-          <p className="text-sm text-danger">{doc.error_message || "Generation failed"}</p>
+          <p className="text-sm text-danger">{doc.error_message || "Could not finish this file. Try generating again."}</p>
         )}
         {(doc.status === "pending" || doc.status === "processing") && (
           <p className="text-sm text-muted">Still generating… refresh in a moment.</p>
@@ -388,42 +387,49 @@ export default function HistoryDetailPage() {
 
   function GenerateControls({ docType }: { docType: "cv" | "cover_letter" }) {
     const busy = generating === docType;
+    const label = docType === "cv" ? "CV" : "cover letter";
     return (
-      <div className="mt-3 space-y-3 rounded-card border border-border p-3">
+      <div className="space-y-3">
         <p className="text-sm text-muted">
-          No {docType === "cv" ? "CV" : "cover letter"} linked to this job description yet.
+          No {label} linked to this job description yet.
         </p>
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="label" htmlFor={`tpl-${docType}`}>
-              Template
-            </label>
-            <select
-              id={`tpl-${docType}`}
-              className="input"
-              value={template}
-              disabled={!!generating}
-              onChange={(e) => setTemplate(e.target.value)}
-            >
-              {TEMPLATES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            type="button"
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+          <label className="text-xs text-muted" htmlFor={`tpl-${docType}`}>
+            Template
+          </label>
+          <select
+            id={`tpl-${docType}`}
+            className="input w-auto min-w-[140px] py-1 text-sm"
+            value={template}
             disabled={!!generating}
-            onClick={() => generateDoc(docType)}
-            className="inline-flex items-center gap-1.5 rounded-card bg-accent px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            onChange={(e) => setTemplate(e.target.value)}
           >
-            <Sparkles className="h-4 w-4" />
-            {busy ? "Generating…" : `Generate ${docType === "cv" ? "CV" : "cover letter"}`}
-          </button>
+            {TEMPLATES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          <span className="text-muted">·</span>
+          {busy ? (
+            <span className="text-sm text-muted">
+              Generating your {label}… this can take a moment. It will show up here when ready.
+            </span>
+          ) : (
+            <button
+              type="button"
+              disabled={!!generating}
+              onClick={() => generateDoc(docType)}
+              className="text-sm font-medium text-accent transition hover:underline disabled:opacity-50"
+            >
+              Generate {label}
+            </button>
+          )}
         </div>
-        {busy && genStatus && (
-          <p className="text-xs text-muted">Status: {genStatus}</p>
+        {busy && genStatus && genStatus !== "starting…" && (
+          <p className="text-xs text-muted">
+            Still preparing your file ({genStatus}). Almost there.
+          </p>
         )}
       </div>
     );
@@ -540,15 +546,19 @@ export default function HistoryDetailPage() {
               {!data.analysis && (
                 <div className="space-y-3">
                   <p className="text-sm text-muted">No analysis was saved for this session.</p>
-                  <button
-                    type="button"
-                    disabled={generating === "analysis"}
-                    onClick={runAnalysis}
-                    className="inline-flex items-center gap-1.5 rounded-card bg-accent px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-                  >
-                    <ScanSearch className="h-4 w-4" />
-                    {generating === "analysis" ? "Analyzing…" : "Run analysis"}
-                  </button>
+                  {generating === "analysis" ? (
+                    <p className="text-sm text-muted">
+                      Running analysis… results will appear here in a moment.
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={runAnalysis}
+                      className="text-sm font-medium text-accent transition hover:underline"
+                    >
+                      Run analysis
+                    </button>
+                  )}
                 </div>
               )}
               {data.analysis?.strengths && data.analysis.strengths.length > 0 && (
