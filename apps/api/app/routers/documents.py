@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_or_create_profile
 from app.database import SessionLocal, get_db
-from app.models import GeneratedDocument, Profile
+from app.models import GeneratedDocument, GenerationHistory, Profile
 from app.schemas import DocumentOut, GenerateCVRequest, GenerateCVResponse, MatchingInsights
 from app.services.cv_generate import generate_document_markdown, jd_hash
 from app.services.cv_render import write_generated_files
@@ -177,12 +177,131 @@ class BulkDeleteIn(BaseModel):
     ids: list[int] = Field(..., min_length=1)
 
 
+
 class GenerateAccepted(BaseModel):
     document_id: int
     title: str
     status: str
     message: str
     poll_url: str
+    history_id: Optional[int] = None
+
+
+class AnalysisPayload(BaseModel):
+    score: int
+    strengths: list[str] = []
+    gaps: list[str] = []
+
+
+class HistoryCreate(BaseModel):
+    job_description: str = Field(..., min_length=20)
+    analysis: Optional[AnalysisPayload] = None
+
+
+class HistoryOut(BaseModel):
+    id: int
+    title: str
+    organization: Optional[str] = None
+    job_description_excerpt: str
+    analysis: Optional[dict] = None
+    created_at: object
+    updated_at: object
+    document_count: int = 0
+    has_cv: bool = False
+    has_cover_letter: bool = False
+
+
+class HistoryDetail(BaseModel):
+    id: int
+    title: str
+    organization: Optional[str] = None
+    job_description: str
+    analysis: Optional[dict] = None
+    created_at: object
+    updated_at: object
+    documents: list[dict] = []
+
+
+def _compute_analysis(jd: str) -> dict:
+    """Simple keyword-based match analysis (mirrors current client logic)."""
+    words = (jd or "").lower()
+    strengths: list[str] = []
+    gaps: list[str] = []
+    if "lead" in words or "senior" in words or "manage" in words:
+        strengths.append("Leadership language detected — highlight management achievements.")
+    if "remote" in words or "hybrid" in words:
+        strengths.append("Remote/hybrid role — emphasize async collaboration.")
+    skill_hints = ["python", "react", "sql", "aws", "communication", "stakeholder", "analytics"]
+    for s in skill_hints:
+        if s in words:
+            strengths.append(f"Mentions {s} — surface related timeline evidence.")
+    if "metric" not in words and "%" not in words and "increased" not in words:
+        gaps.append("Job emphasizes impact — add quantified achievements to timeline entries.")
+    if not strengths:
+        strengths.append("General professional fit based on your verified timeline.")
+    score = min(92, 55 + len(strengths) * 8 - len(gaps) * 5)
+    return {"score": score, "strengths": strengths, "gaps": gaps}
+
+
+def _history_out(h: GenerationHistory, docs: list | None = None) -> dict:
+    docs = docs if docs is not None else (h.documents or [])
+    excerpt = (h.job_description or "")[:180].replace("\n", " ").strip()
+    if len(h.job_description or "") > 180:
+        excerpt += "…"
+    return {
+        "id": h.id,
+        "title": h.title,
+        "organization": h.organization,
+        "job_description_excerpt": excerpt,
+        "analysis": h.analysis,
+        "created_at": h.created_at,
+        "updated_at": h.updated_at,
+        "document_count": len(docs),
+        "has_cv": any(d.doc_type == "cv" for d in docs),
+        "has_cover_letter": any(d.doc_type == "cover_letter" for d in docs),
+    }
+
+
+def _get_or_create_history(
+    db: Session,
+    profile: Profile,
+    job_description: str,
+    analysis: Optional[dict] = None,
+) -> GenerationHistory:
+    """Find existing history by JD hash for this profile, or create a new one."""
+    hsh = jd_hash(job_description)
+    existing = (
+        db.query(GenerationHistory)
+        .filter(
+            GenerationHistory.profile_id == profile.id,
+            GenerationHistory.job_description_hash == hsh,
+        )
+        .order_by(GenerationHistory.created_at.desc())
+        .first()
+    )
+    job_title, org = _extract_job_meta(job_description)
+    title = job_title or (job_description.strip().splitlines()[0][:80] if job_description.strip() else "Untitled JD")
+    if existing:
+        if analysis is not None:
+            existing.analysis = analysis
+        existing.job_description = job_description
+        existing.title = title
+        existing.organization = org
+        db.commit()
+        db.refresh(existing)
+        return existing
+    hist = GenerationHistory(
+        profile_id=profile.id,
+        job_description=job_description,
+        job_description_hash=hsh,
+        title=title,
+        organization=org,
+        analysis=analysis,
+    )
+    db.add(hist)
+    db.commit()
+    db.refresh(hist)
+    return hist
 
 
 # ─── routes ─────────────────────────────────────────────────────────────────
@@ -327,17 +446,22 @@ async def generate_cv(
 ):
     """
     Accept generation and run LLM in the background.
+    Auto-saves the JD into GenerationHistory and links the document.
     Client should poll GET /api/documents/{id} until status is ready|failed.
     """
     if not profile.timeline_entries and body.doc_type != "bio":
         raise HTTPException(400, "Add at least one career timeline entry before generating")
 
     job_title, org = _extract_job_meta(body.job_description)
-    # Allow client override via optional future fields; for now extract from JD
     title = _doc_title(body.doc_type or "cv", job_title, profile.full_name or profile.email)
+
+    # Auto-save JD + analysis into history
+    analysis = _compute_analysis(body.job_description)
+    history = _get_or_create_history(db, profile, body.job_description, analysis=analysis)
 
     doc = GeneratedDocument(
         profile_id=profile.id,
+        history_id=history.id,
         title=title,
         doc_type=body.doc_type or "cv",
         template=body.template or "professional",
@@ -366,6 +490,7 @@ async def generate_cv(
         status="pending",
         message="Generation started. Poll the document until status is ready.",
         poll_url=f"/api/documents/{doc.id}",
+        history_id=history.id,
     )
 
 
@@ -419,3 +544,137 @@ def download_docx(
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
+
+
+
+# ─── Generation History ──────────────────────────────────────────────────────
+
+@router.post("/history", response_model=HistoryDetail)
+def create_or_update_history(
+    body: HistoryCreate,
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Save (or update by JD hash) a job-description processing session.
+    Called when the user analyzes a JD or before generation.
+    """
+    analysis = None
+    if body.analysis:
+        analysis = body.analysis.model_dump()
+    else:
+        analysis = _compute_analysis(body.job_description)
+    hist = _get_or_create_history(db, profile, body.job_description, analysis=analysis)
+    docs = (
+        db.query(GeneratedDocument)
+        .filter(GeneratedDocument.history_id == hist.id, GeneratedDocument.profile_id == profile.id)
+        .order_by(GeneratedDocument.created_at.desc())
+        .all()
+    )
+    return HistoryDetail(
+        id=hist.id,
+        title=hist.title,
+        organization=hist.organization,
+        job_description=hist.job_description,
+        analysis=hist.analysis,
+        created_at=hist.created_at,
+        updated_at=hist.updated_at,
+        documents=[_doc_out(d) for d in docs],
+    )
+
+
+@router.get("/history")
+def list_history(
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Annotated[Session, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+):
+    q = db.query(GenerationHistory).filter(GenerationHistory.profile_id == profile.id)
+    total = q.count()
+    items = (
+        q.order_by(GenerationHistory.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    out = []
+    for h in items:
+        docs = (
+            db.query(GeneratedDocument)
+            .filter(GeneratedDocument.history_id == h.id)
+            .all()
+        )
+        out.append(_history_out(h, docs))
+    pages = max(1, (total + page_size - 1) // page_size)
+    return {"items": out, "total": total, "page": page, "page_size": page_size, "pages": pages}
+
+
+@router.get("/history/{history_id}", response_model=HistoryDetail)
+def get_history(
+    history_id: int,
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    hist = (
+        db.query(GenerationHistory)
+        .filter(GenerationHistory.id == history_id, GenerationHistory.profile_id == profile.id)
+        .first()
+    )
+    if not hist:
+        raise HTTPException(404, "History entry not found")
+    docs = (
+        db.query(GeneratedDocument)
+        .filter(GeneratedDocument.history_id == hist.id, GeneratedDocument.profile_id == profile.id)
+        .order_by(GeneratedDocument.created_at.desc())
+        .all()
+    )
+    return HistoryDetail(
+        id=hist.id,
+        title=hist.title,
+        organization=hist.organization,
+        job_description=hist.job_description,
+        analysis=hist.analysis,
+        created_at=hist.created_at,
+        updated_at=hist.updated_at,
+        documents=[_doc_out(d) for d in docs],
+    )
+
+
+@router.delete("/history/{history_id}")
+def delete_history(
+    history_id: int,
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Delete a history entry and all associated generated documents + stored files.
+    Client should trigger downloads before calling this.
+    """
+    hist = (
+        db.query(GenerationHistory)
+        .filter(GenerationHistory.id == history_id, GenerationHistory.profile_id == profile.id)
+        .first()
+    )
+    if not hist:
+        raise HTTPException(404, "History entry not found")
+    docs = (
+        db.query(GeneratedDocument)
+        .filter(GeneratedDocument.history_id == hist.id, GeneratedDocument.profile_id == profile.id)
+        .all()
+    )
+    for doc in docs:
+        if doc.storage_key_pdf:
+            try:
+                delete_file(doc.storage_key_pdf)
+            except Exception:
+                pass
+        if doc.storage_key_docx:
+            try:
+                delete_file(doc.storage_key_docx)
+            except Exception:
+                pass
+        db.delete(doc)
+    db.delete(hist)
+    db.commit()
+    return {"ok": True, "deleted_documents": len(docs)}

@@ -107,6 +107,7 @@ def _try_schema() -> bool:
                 ("target_job_title", "ALTER TABLE generated_documents ADD COLUMN target_job_title VARCHAR(255)"),
                 ("target_organization", "ALTER TABLE generated_documents ADD COLUMN target_organization VARCHAR(255)"),
                 ("error_message", "ALTER TABLE generated_documents ADD COLUMN error_message TEXT"),
+                ("history_id", "ALTER TABLE generated_documents ADD COLUMN history_id INTEGER"),
             ]:
                 has = conn.execute(
                     text(
@@ -117,6 +118,15 @@ def _try_schema() -> bool:
                 ).fetchone()
                 if not has:
                     conn.execute(text(ddl))
+            try:
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_generated_documents_history_id "
+                        "ON generated_documents (history_id)"
+                    )
+                )
+            except Exception:
+                pass
 
             # Skills: date acquired / started
             has_skill_date = conn.execute(

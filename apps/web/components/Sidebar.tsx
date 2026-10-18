@@ -20,6 +20,7 @@ import {
   LayoutDashboard,
   PanelLeft,
   Users,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -33,6 +34,7 @@ const professionalNav = [
   { href: "/verification", label: "Verification", icon: ShieldCheck },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/generate", label: "Generate Files", icon: FileText },
+  { href: "/history", label: "History", icon: History },
   { href: "/opportunities", label: "Opportunities", icon: Briefcase },
   { href: "/profile", label: "Profile", icon: User },
   { href: "/settings", label: "Settings", icon: Settings },

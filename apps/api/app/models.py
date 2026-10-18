@@ -113,6 +113,9 @@ class Profile(Base):
     documents: Mapped[list["GeneratedDocument"]] = relationship(
         back_populates="profile", cascade="all, delete-orphan"
     )
+    generation_histories: Mapped[list["GenerationHistory"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
 
 
 class TimelineEntry(Base):
@@ -198,11 +201,40 @@ class VerificationItem(Base):
     profile: Mapped["Profile"] = relationship(back_populates="verifications")
 
 
+class GenerationHistory(Base):
+    """
+    A saved job-description processing session.
+    Stores the full JD, match analysis, and links to generated CV / cover letter.
+    """
+
+    __tablename__ = "generation_histories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    job_description: Mapped[str] = mapped_column(Text)
+    job_description_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(255))  # extracted job title or short label
+    organization: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    analysis: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # score, strengths, gaps
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    profile: Mapped["Profile"] = relationship(back_populates="generation_histories")
+    documents: Mapped[list["GeneratedDocument"]] = relationship(
+        back_populates="history", cascade="all, delete-orphan"
+    )
+
+
 class GeneratedDocument(Base):
     __tablename__ = "generated_documents"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    history_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("generation_histories.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(255))
     doc_type: Mapped[str] = mapped_column(String(32))  # cv|cover_letter|bio
     template: Mapped[str] = mapped_column(String(64), default="professional")
@@ -219,6 +251,7 @@ class GeneratedDocument(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     profile: Mapped["Profile"] = relationship(back_populates="documents")
+    history: Mapped[Optional["GenerationHistory"]] = relationship(back_populates="documents")
 
 
 # ─── Phase 2: Organizations, Jobs, Matching ─────────────────────────────────

@@ -13,6 +13,7 @@ type Accepted = {
   status: string;
   message: string;
   poll_url: string;
+  history_id?: number | null;
 };
 
 type DocPoll = {
@@ -87,14 +88,14 @@ function GenerateInner() {
     }
   }
 
-  function analyzeJob() {
+  async function analyzeJob() {
     if (!jd.trim()) {
       setError("Paste a job description or URL content first.");
       return;
     }
     setAnalyzing(true);
     setError(null);
-    setTimeout(() => {
+    try {
       const words = jd.toLowerCase();
       const strengths: string[] = [];
       const gaps: string[] = [];
@@ -113,9 +114,17 @@ function GenerateInner() {
       }
       if (strengths.length === 0) strengths.push("General professional fit based on your verified timeline.");
       const score = Math.min(92, 55 + strengths.length * 8 - gaps.length * 5);
-      setAnalysis({ score, strengths, gaps });
+      const analysisResult = { score, strengths, gaps };
+      setAnalysis(analysisResult);
+      await api.post("/history", {
+        job_description: jd,
+        analysis: analysisResult,
+      });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save analysis");
+    } finally {
       setAnalyzing(false);
-    }, 600);
+    }
   }
 
   async function generate(e?: React.FormEvent) {
@@ -240,6 +249,13 @@ function GenerateInner() {
                 </TextAction>
               </div>
             )}
+            <p className="text-xs text-muted">
+              Saved to{" "}
+              <TextAction href="/history" variant="muted">
+                History
+              </TextAction>
+              .
+            </p>
           </div>
         )}
 
