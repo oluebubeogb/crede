@@ -8,8 +8,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # /backend/* is rewritten to API_PROXY_TARGET. Next bakes rewrites at build time,
-# so this MUST be a build arg (internal URL like http://api:8008 works in compose).
-ARG API_PROXY_TARGET=http://api:8008
+# so this MUST be a build arg (internal URL like http://crede-api:8008 works in compose).
+ARG API_PROXY_TARGET=http://crede-api:8008
 ARG NEXT_PUBLIC_API_URL=
 ARG NEXT_PUBLIC_ACCOUNTS_URL=https://accounts.collab.name.ng
 ARG NEXT_PUBLIC_APP_URL=https://crede.collab.name.ng
@@ -23,7 +23,7 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3001 HOSTNAME=0.0.0.0
-ARG API_PROXY_TARGET=http://api:8008
+ARG API_PROXY_TARGET=http://crede-api:8008
 ENV API_PROXY_TARGET=$API_PROXY_TARGET
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public

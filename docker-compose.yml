@@ -1,4 +1,4 @@
-# Crede — API + web + Postgres.
+# Crede — API + web. Postgres is a separate Coolify resource (set DATABASE_URL to its internal URL).
 # Coolify: create a "Docker Compose" resource from this repo, then set a domain on `web`
 # (e.g. https://crede.collab.name.ng:3001) and, optionally, on `api` (…:8008).
 # Every variable below can be edited in Coolify's Environment Variables tab.
@@ -7,36 +7,14 @@
 #   (then add a `ports:` override or put a reverse proxy in front of web:3001).
 
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-crede}
-      POSTGRES_USER: ${POSTGRES_USER:-crede}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crede-change-me}
-    # Lean settings for a small VPS.
-    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=40", "-c", "work_mem=4MB"]
-    volumes:
-      - crede_pg:/var/lib/postgresql/data
-    expose:
-      - "5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crede} -d ${POSTGRES_DB:-crede}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   api:
     build: ./apps/api
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     expose:
       - "8008"
     environment:
       # Core
-      DATABASE_URL: ${DATABASE_URL:-postgresql://crede:crede-change-me@db:5432/crede}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to your Coolify Postgres internal URL}
       SECRET_KEY: ${SECRET_KEY:-change-me-to-a-long-random-string}
       APP_URL: ${APP_URL:-https://crede.collab.name.ng}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
@@ -104,12 +82,18 @@ services:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
     volumes:
       - crede_data:/data/crede
+    # `default` lets web reach the API as crede-api; `coolify` lets the API reach a
+    # Postgres created as a separate Coolify resource (its internal hostname).
+    networks:
+      default:
+        aliases: [crede-api]
+      coolify:
+        aliases: [crede-api]
 
   web:
     build:
       context: ./apps/web
       args:
-        API_PROXY_TARGET: ${API_PROXY_TARGET:-http://api:8008}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
         NEXT_PUBLIC_ACCOUNTS_URL: ${NEXT_PUBLIC_ACCOUNTS_URL:-https://accounts.collab.name.ng}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://crede.collab.name.ng}
@@ -118,12 +102,19 @@ services:
       - api
     expose:
       - "3001"
+    networks:
+      - default
+      - coolify
     environment:
-      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://api:8008}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
       NEXT_PUBLIC_ACCOUNTS_URL: ${NEXT_PUBLIC_ACCOUNTS_URL:-https://accounts.collab.name.ng}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://crede.collab.name.ng}
 
 volumes:
-  crede_pg:
   crede_data:
+
+networks:
+  default: {}
+  coolify:
+    external: true
+    name: coolify
