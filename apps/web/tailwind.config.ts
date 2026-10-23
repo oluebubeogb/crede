@@ -8,6 +8,10 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         surface: "var(--surface)",
+        "surface-2": "var(--surface-2)",
+        "border-strong": "var(--border-strong)",
+        violet: "var(--violet)",
+        sky: "var(--sky)",
         border: "var(--border)",
         foreground: "var(--foreground)",
         muted: "var(--muted)",
@@ -17,14 +21,15 @@ const config: Config = {
         danger: "var(--danger)",
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
       },
       borderRadius: {
         card: "16px",
         btn: "12px",
       },
       maxWidth: {
-        content: "1200px",
+        content: "1120px",
+        feed: "640px",
       },
       width: {
         sidebar: "280px",

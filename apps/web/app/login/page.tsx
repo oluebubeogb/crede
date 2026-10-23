@@ -9,9 +9,9 @@ import { getSession, login, signup } from "@/lib/api";
 function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
-  const next = search.get("next") || "/dashboard";
+  const next = search.get("next") || "/feed";
 
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup">(search.get("mode") === "signup" ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -61,8 +61,8 @@ function LoginForm() {
   }
 
   return (
-    <div className="w-full max-w-md">
-      <div className="flex flex-col items-center border-b border-border pb-8">
+    <div className="card w-full max-w-md p-6 sm:p-8">
+      <div className="flex flex-col items-center pb-6">
         <Image
           src="/icons/logo-128.png"
           alt="Crede"
@@ -81,13 +81,11 @@ function LoginForm() {
         </p>
       </div>
 
-      <div className="mt-6 flex border-b border-border">
+      <div className="flex rounded-full bg-surface-2 p-1">
         <button
           type="button"
-          className={`flex-1 border-b-2 py-2.5 text-sm font-medium transition ${
-            mode === "login"
-              ? "border-accent text-accent"
-              : "border-transparent text-muted hover:text-foreground"
+          className={`flex-1 rounded-full py-2 text-sm font-medium transition ${
+            mode === "login" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
           }`}
           onClick={() => {
             setMode("login");
@@ -98,10 +96,8 @@ function LoginForm() {
         </button>
         <button
           type="button"
-          className={`flex-1 border-b-2 py-2.5 text-sm font-medium transition ${
-            mode === "signup"
-              ? "border-accent text-accent"
-              : "border-transparent text-muted hover:text-foreground"
+          className={`flex-1 rounded-full py-2 text-sm font-medium transition ${
+            mode === "signup" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
           }`}
           onClick={() => {
             setMode("signup");
@@ -161,7 +157,7 @@ function LoginForm() {
           )}
         </div>
         {error && <p className="text-sm text-danger">{error}</p>}
-        <button type="submit" className="text-action w-full text-left" disabled={loading}>
+        <button type="submit" className="btn btn-primary w-full" disabled={loading}>
           {loading
             ? mode === "signup"
               ? "Creating account…"
@@ -172,8 +168,8 @@ function LoginForm() {
         </button>
       </form>
 
-      <p className="mt-8 border-t border-border pt-6 text-center text-xs text-muted">
-        <Link href="/" className="text-accent hover:underline">
+      <p className="mt-6 text-center text-xs text-muted">
+        <Link href="/" className="link-muted">
           Back to home
         </Link>
       </p>
@@ -183,7 +179,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center bg-surface-2/50 px-4 py-12">
       <Suspense
         fallback={
           <div className="w-full max-w-md text-center">

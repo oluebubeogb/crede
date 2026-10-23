@@ -255,7 +255,8 @@ async def generate_document_markdown(
     owned = {s.lower() for s in facts["skills"]}
     name = str(facts.get("name") or profile.email or "Candidate")
 
-    if not settings.llm_enabled:
+    from app.services.llm import llm_available
+    if not llm_available():
         insights = _heuristic_insights(job_description)
         insights.missing_skills = [s for s in insights.required_skills if s.lower() not in owned]
         md = _markdown_from_facts(profile, doc_type)
@@ -339,3 +340,61 @@ def build_cv_snapshot(profile: Profile, insights: MatchingInsights, template: st
         "matching": insights.model_dump(),
         "tailored": False,
     }
+
+
+# ═══════════════════════ v3: structured content (AI writes JSON only) ═══════════════════════
+CV_JSON_SYSTEM = """You tailor a CV for a specific job. You write CONTENT ONLY as JSON — never layout, markdown or HTML.
+Return exactly:
+{"headline": str, "summary": str, "highlights": [str], "experience": [{"id": int, "bullets": [str]}], "skills": [str]}
+Rules:
+- headline: target-aligned professional title, max 8 words, truthful to the candidate's history.
+- summary: 3–4 sentences, first person implied (no "I"), tailored to the job, no clichés.
+- highlights: 0–3 standout achievements taken from the facts.
+- experience: for EVERY role id given, 3–5 bullets, reverse-chronological order is handled for you. Start each with a strong
+  past-tense verb (present tense for the current role). Quantify with numbers that appear in the facts; never invent numbers,
+  employers, titles, dates, degrees or tools. Mirror the job's vocabulary when the underlying work is the same.
+- skills: reorder the candidate's OWN skills so the most job-relevant come first (max 16). Do not add skills they do not list."""
+
+LETTER_JSON_SYSTEM = """You write a business cover letter body as JSON — content only, no layout.
+Return exactly: {"recipient_name": str|null, "paragraphs": [str, str, str, str]}
+Rules: 4 paragraphs, 280–360 words total. P1: the role and company, and a one-line value proposition. P2–P3: two or three concrete,
+truthful achievements from the facts that answer the job's main requirements (use real numbers only). P4: close with enthusiasm and a
+call to action. recipient_name only if a named contact appears in the job description, else null. No sign-off, no address, no date,
+no skill lists, nothing invented."""
+
+
+async def generate_content(profile: Profile, job_description: str, doc_type: str, parsed: dict | None,
+                           match: dict | None, job_title: str | None, org: str | None) -> dict:
+    from app.services import doc_engine
+    from app.services.llm import llm_available
+
+    base = doc_engine.facts_cv(profile)
+    mode, ai = "facts", None
+    req_txt = "\n".join(f"- [{r.get('status', '?')}] {r.get('text')}" for r in (match or {}).get("requirements", [])[:14]) \
+        or "\n".join(f"- {r.get('text')}" for r in (parsed or {}).get("must_have", [])[:12])
+    facts_json = json.dumps({
+        "name": base["name"], "headline": base["headline"], "summary": base["summary"], "location": base["contact"]["location"],
+        "years_experience": profile.years_experience, "skills": base["skills"],
+        "roles": [{"id": w["id"], "title": w["title"], "org": w["org"], "dates": doc_engine.fmt_range(w["start"], w["end"], w["current"]),
+                   "facts": w["bullets"], "description": next((t.description for t in profile.timeline_entries if t.id == w["id"]), None)}
+                  for w in base["experience"]],
+        "education": [{"degree": x["degree"], "field": x["field"], "school": x["school"]} for x in base["education"]],
+        "certifications": [c["name"] for c in base["certifications"]],
+    }, ensure_ascii=False, default=str)
+    user = (f"JOB: {job_title or ''} at {org or ''}\nREQUIREMENTS (status vs candidate):\n{req_txt}\n\nJOB DESCRIPTION:\n{job_description[:4500]}\n\n"
+            f"CANDIDATE FACTS (only source of truth):\n{facts_json[:11000]}")
+    if llm_available():
+        try:
+            ai = await chat_json(LETTER_JSON_SYSTEM if doc_type == "cover_letter" else CV_JSON_SYSTEM, user, temperature=0.35, max_tokens=2200)
+            mode = "ai"
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Structured generation failed, using facts: %s", e)
+            ai, mode = None, "facts_fallback"
+    cv = doc_engine.merge_ai_cv(base, ai if doc_type != "cover_letter" else None, base["skills"])
+    if doc_type == "cover_letter":
+        content = doc_engine.letter_content(cv, ai, doc_engine.facts_letter(profile, cv, job_title, org, parsed, match), job_title, org,
+                                            ((parsed or {}).get("location") or {}).get("text"))
+    else:
+        content = cv
+    return {"v": 3, "doc_type": doc_type, "content": content, "tailor_mode": mode, "tailored": mode == "ai",
+            "name": base["name"], "email": base["contact"]["email"]}

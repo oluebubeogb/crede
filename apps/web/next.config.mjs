@@ -2,7 +2,8 @@
 const nextConfig = {
   output: "standalone",
   reactStrictMode: true,
-  images: { remotePatterns: [] },
+  // Static PNG icons only; skip the sharp-based optimiser (lean image, no 400s in standalone).
+  images: { unoptimized: true },
   async rewrites() {
     // Same-origin proxy → avoids browser CORS to api-crede
     // Browser calls /backend/* on crede.collab.name.ng; Next forwards to the API.

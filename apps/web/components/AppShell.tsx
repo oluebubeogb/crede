@@ -2,30 +2,31 @@
 
 import { useEffect } from "react";
 import { Sidebar } from "./Sidebar";
-import { SearchBar } from "./SearchBar";
+import { TopBar } from "./TopBar";
+import { BottomNav } from "./BottomNav";
+import { MeProvider } from "@/lib/me";
+import { Toaster } from "@/components/ui/kit";
 import { getSession } from "@/lib/api";
 
-/**
- * Two-column shell: collapsible sidebar + fluid main with global search bar.
- * Uses flex so content never sits under the sidebar.
- * Silently refreshes the session cookie on mount so active users stay signed in.
- */
+/** Desktop: sidebar + top bar. Mobile: app bar + bottom tab bar. */
 export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     getSession().catch(() => {});
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <Sidebar />
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <SearchBar />
-        <main className="min-h-0 flex-1">
-          <div className="mx-auto w-full max-w-content px-4 py-8 sm:px-6 sm:py-10">
-            {children}
-          </div>
-        </main>
+    <MeProvider>
+      <div className="flex min-h-[100dvh] bg-background">
+        <Sidebar />
+        <div className="flex min-h-[100dvh] min-w-0 flex-1 flex-col">
+          <TopBar />
+          <main className="min-h-0 flex-1">
+            <div className="mx-auto w-full max-w-content px-4 pb-nav pt-5 sm:px-6 md:pb-12 md:pt-8">{children}</div>
+          </main>
+        </div>
+        <BottomNav />
+        <Toaster />
       </div>
-    </div>
+    </MeProvider>
   );
 }

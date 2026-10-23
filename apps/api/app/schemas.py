@@ -43,12 +43,22 @@ class ProfileOut(BaseModel):
     profile_completion: int
     is_public: bool
     preferences: Optional[dict] = None
+    avatar_url: Optional[str] = None
+    badge_level: str = "none"
+    identity_verified: bool = False
+    is_admin: bool = False
+    claims: Optional[dict] = None
     created_at: datetime
 
 
 class TimelineEntryIn(BaseModel):
+    entry_type: str = "work"  # work | education (education: job_title=degree, organization=school)
     job_title: str
     organization: str
+    organization_id: Optional[int] = None
+    field_of_study: Optional[str] = None
+    grade: Optional[str] = None
+    location: Optional[str] = None
     industry: Optional[str] = None
     employment_type: Optional[str] = None
     start_date: date
@@ -67,6 +77,8 @@ class TimelineEntryOut(TimelineEntryIn):
 
     id: int
     verification_status: str
+    document_key: Optional[str] = None
+    verification: Optional[dict] = None
     created_at: datetime
 
 
@@ -87,6 +99,8 @@ class SkillOut(SkillIn):
 class CertificationIn(BaseModel):
     name: str
     issuer: Optional[str] = None
+    issuer_org_id: Optional[int] = None
+    credential_url: Optional[str] = None
     issued_at: Optional[date] = None
     expires_at: Optional[date] = None
     credential_id: Optional[str] = None
@@ -98,6 +112,7 @@ class CertificationOut(CertificationIn):
     id: int
     verification_status: str
     document_key: Optional[str] = None
+    verification: Optional[dict] = None
 
 
 class VerificationOut(BaseModel):

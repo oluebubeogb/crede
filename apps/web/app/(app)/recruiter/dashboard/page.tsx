@@ -1,101 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import { Building2, Briefcase, Users, Search } from "lucide-react";
-
-type Org = { id: number; name: string; verification_status: string };
+import { Building2, BriefcaseBusiness, Plus, Search, UsersRound } from "lucide-react";
+import { useApi } from "@/lib/hooks";
+import { EmptyState, ErrorNote, OrgMark, PageHeader, RowLink, SkeletonList } from "@/components/ui/kit";
+import { ClaimPill, ORG_TYPE, type Org } from "@/components/orgs";
 
 export default function RecruiterDashboard() {
-  const [orgs, setOrgs] = useState<Org[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api<Org[]>("/api/organizations/mine")
-      .then(setOrgs)
-      .catch(() => setOrgs([]))
-      .finally(() => setLoading(false));
-  }, []);
-
+  const { data: orgs, error, loading, reload } = useApi<Org[]>("/organizations/mine");
   return (
-    <div className="w-full space-y-0">
-      <div>
-        <h1 className="page-title">Recruiter dashboard</h1>
-        <p className="mt-1 text-muted">Search verified professionals and manage hiring.</p>
+    <div className="mx-auto max-w-4xl">
+      <PageHeader eyebrow="Recruiter" title="Hiring" lead="Post roles from your organisations and rank candidates against every requirement." />
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <RowLink href="/recruiter/jobs" icon={BriefcaseBusiness} tint="blue" title="Jobs" sub="Post & manage roles" />
+        <RowLink href="/recruiter/candidates" icon={Search} tint="sky" title="Find candidates" sub="Search verified talent" />
+        <RowLink href="/orgs" icon={UsersRound} tint="violet" title="Organisations" sub="Claim, verify, members" />
       </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Link href="/recruiter/candidates" className="card flex items-center gap-4 transition hover:border-accent">
-          <div className="flex h-10 w-10 items-center justify-center rounded-card bg-surface text-accent">
-            <Search className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="font-medium">Find candidates</p>
-            <p className="text-sm text-muted">Search verified profiles</p>
-          </div>
-        </Link>
-        <Link href="/recruiter/jobs" className="card flex items-center gap-4 transition hover:border-accent">
-          <div className="flex h-10 w-10 items-center justify-center rounded-card bg-surface text-accent">
-            <Briefcase className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="font-medium">Jobs</p>
-            <p className="text-sm text-muted">Post & match roles</p>
-          </div>
-        </Link>
-        <Link href="/recruiter/organizations" className="card flex items-center gap-4 transition hover:border-accent">
-          <div className="flex h-10 w-10 items-center justify-center rounded-card bg-surface text-accent">
-            <Building2 className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="font-medium">Organizations</p>
-            <p className="text-sm text-muted">Company profiles</p>
-          </div>
-        </Link>
-        <div className="card flex items-center gap-4 opacity-60">
-          <div className="flex h-10 w-10 items-center justify-center rounded-card bg-surface text-muted">
-            <Users className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="font-medium">Pipelines</p>
-            <p className="text-sm text-muted">Coming soon</p>
-          </div>
-        </div>
-      </div>
-
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Your organizations</h2>
-          <Link href="/recruiter/organizations" className="text-sm text-accent hover:underline">
-            Manage
-          </Link>
-        </div>
-        {loading ? (
-          <p className="text-sm text-muted">Loading…</p>
-        ) : orgs.length === 0 ? (
-          <div className="card text-center">
-            <p className="text-muted">No organization yet.</p>
-            <Link href="/recruiter/organizations" className="text-action">
-              Create organization
-            </Link>
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {orgs.map((o) => (
-              <div key={o.id} className="card flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{o.name}</p>
-                  <p className="text-xs capitalize text-muted">{o.verification_status}</p>
+      <p className="section-title mb-3">Your organisations</p>
+      {error ? <ErrorNote message={error} onRetry={reload} /> : loading && !orgs ? <SkeletonList n={2} avatar /> : !orgs?.length ? (
+        <EmptyState icon={Building2} title="No organisation yet" body="Find your company and claim it with your official work email, or add it if it's not listed." action={<Link href="/orgs" className="link text-sm">Find or add your organisation</Link>} />
+      ) : (
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {orgs.map((o) => (
+            <li key={o.id}>
+              <Link href={`/orgs/${o.id}`} className="card flex items-center gap-3 p-4">
+                <OrgMark name={o.name} src={o.logo_url} size={44} />
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-1 font-semibold">{o.name}</p>
+                  <p className="text-xs text-muted">{ORG_TYPE[o.org_type]?.label} · {o.my_role || "member"}</p>
                 </div>
-                <Link href={`/recruiter/jobs?org=${o.id}`} className="text-sm text-accent hover:underline">
-                  Jobs →
-                </Link>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+                <ClaimPill status={o.claim_status} />
+              </Link>
+            </li>
+          ))}
+          <li><Link href="/recruiter/jobs" className="card flex h-full items-center justify-center gap-2 p-4 text-sm text-muted"><Plus className="h-4 w-4" />Post a job</Link></li>
+        </ul>
+      )}
     </div>
   );
 }

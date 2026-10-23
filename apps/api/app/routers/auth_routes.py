@@ -52,6 +52,14 @@ async def signup(body: SignupBody, response: Response, db: Session = Depends(get
     }
 
 
+def _after_login() -> None:
+    try:
+        from app.services.teams_sync import maybe_sync_soon
+        maybe_sync_soon()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 @router.post("/login")
 async def login(body: LoginBody, response: Response, db: Session = Depends(get_db)):
     """
@@ -68,6 +76,7 @@ async def login(body: LoginBody, response: Response, db: Session = Depends(get_d
                 raise HTTPException(status_code=403, detail="Account disabled")
             token = create_access_token(f"local:{user.id}", extra={"email": user.email, "role": user.role})
             set_access_cookie(response, token)
+            _after_login()
             return {
                 "ok": True,
                 "user": {
@@ -105,6 +114,7 @@ async def login(body: LoginBody, response: Response, db: Session = Depends(get_d
             if settings.cookie_domain:
                 kwargs["domain"] = settings.cookie_domain
             response.set_cookie(**kwargs)
+        _after_login()
         return {
             "ok": True,
             "user": {

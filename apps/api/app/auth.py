@@ -338,6 +338,17 @@ async def get_or_create_profile(
             db.add(profile)
             db.commit()
             db.refresh(profile)
+            try:
+                from app.services.teams_sync import attach_pending
+                attach_pending(db, profile)
+            except Exception:  # noqa: BLE001
+                db.rollback()
+            try:
+                from app.services import mailer
+                mailer.enqueue(db, profile.email, "welcome", {"name": profile.full_name or profile.email.split("@")[0],
+                                                              "link": "/feed"})
+            except Exception:  # noqa: BLE001
+                db.rollback()
         except SQLAlchemyError as e:
             db.rollback()
             raise HTTPException(

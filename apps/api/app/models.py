@@ -95,6 +95,12 @@ class Profile(Base):
     avatar_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)
     preferences: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # settings tabs
+    # v3 trust: claim-backed verification + badges
+    identity_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    badge_level: Mapped[str] = mapped_column(String(8), default="none")  # none | gray | green
+    badge_granted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    facts_version: Mapped[int] = mapped_column(Integer, default=0)  # bumps on every career-fact change
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -140,6 +146,13 @@ class TimelineEntry(Base):
     budget_managed: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     verification_status: Mapped[str] = mapped_column(String(32), default="unverified")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # v3: work | education ; education uses job_title=degree, organization=school
+    entry_type: Mapped[str] = mapped_column(String(16), default="work")
+    organization_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    field_of_study: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    grade: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    document_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -177,6 +190,8 @@ class Certification(Base):
     credential_id: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     document_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     verification_status: Mapped[str] = mapped_column(String(32), default="unverified")
+    issuer_org_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    credential_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     profile: Mapped["Profile"] = relationship(back_populates="certifications")
@@ -270,6 +285,15 @@ class Organization(Base):
     verification_status: Mapped[str] = mapped_column(String(32), default="unverified")  # unverified|pending|verified
     logo_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     created_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # local User.id
+    # v3
+    org_type: Mapped[str] = mapped_column(String(16), default="company")  # company | school | issuer
+    email_domain: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    claim_status: Mapped[str] = mapped_column(String(16), default="unclaimed")  # unclaimed|pending|approved
+    created_by_profile_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="crede")  # crede | teams
+    external_id: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, index=True)  # Teams org id
+    teams_slug: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -287,8 +311,10 @@ class OrganizationMember(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
-    user_id: Mapped[int] = mapped_column(Integer, index=True)  # local User.id
-    role: Mapped[str] = mapped_column(String(32), default="recruiter")  # owner|admin|recruiter
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, index=True, nullable=True)  # legacy local User.id
+    profile_id: Mapped[Optional[int]] = mapped_column(Integer, index=True, nullable=True)  # v3: works for collab users
+    role: Mapped[str] = mapped_column(String(32), default="recruiter")  # owner|admin|recruiter|member
+    source: Mapped[str] = mapped_column(String(16), default="crede")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     organization: Mapped["Organization"] = relationship(back_populates="members")

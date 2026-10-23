@@ -1,63 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PLACEHOLDERS = [
-  "Search skills, certifications, or people…",
-  "Find opportunities matching your profile…",
-  "Look up jobs, candidates, or organizations…",
-  "Search documents, timeline, or verifications…",
-  "Discover roles aligned with your career path…",
+  "Search people, posts and organisations…",
+  "Find a school or certification issuer…",
+  "Look up a company to verify your role…",
 ];
 
-export function SearchBar({ className }: { className?: string }) {
+export function SearchBar({ className, autoFocus }: { className?: string; autoFocus?: boolean }) {
+  const router = useRouter();
   const [index, setIndex] = useState(0);
-  const [fade, setFade] = useState(true);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    if (query) return; // pause animation while typing
-
-    const interval = setInterval(() => {
-      setFade(false);
-      setTimeout(() => {
-        setIndex((i) => (i + 1) % PLACEHOLDERS.length);
-        setFade(true);
-      }, 300);
-    }, 3800);
-
-    return () => clearInterval(interval);
+    if (query) return;
+    const t = setInterval(() => setIndex((i) => (i + 1) % PLACEHOLDERS.length), 4200);
+    return () => clearInterval(t);
   }, [query]);
 
   return (
-    <div
-      className={cn(
-        "relative flex h-14 w-full items-center border-b border-border bg-background px-4 sm:px-6",
-        className
-      )}
-    >
-      <Search className="absolute left-4 sm:left-6 h-4 w-4 text-muted pointer-events-none" />
-      <input
-        type="search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        className="h-full w-full bg-transparent pl-8 pr-4 text-sm text-foreground outline-none placeholder:text-transparent"
-        aria-label="Search Crede"
-      />
-      {/* Animated placeholder overlay — only visible when input is empty */}
-      {!query && (
-        <span
-          className={cn(
-            "pointer-events-none absolute left-12 sm:left-14 top-1/2 -translate-y-1/2 text-sm text-muted transition-opacity duration-300 ease-in-out",
-            fade ? "opacity-100" : "opacity-0"
-          )}
-          aria-hidden
-        >
-          {PLACEHOLDERS[index]}
-        </span>
-      )}
-    </div>
+    <form role="search" onSubmit={(e) => { e.preventDefault(); if (query.trim()) router.push(`/search?q=${encodeURIComponent(query.trim())}`); }}
+      className={cn("relative flex h-10 w-full max-w-md items-center rounded-full border border-border bg-surface transition focus-within:border-border-strong focus-within:shadow-[var(--shadow-hover)]", className)}>
+      <Search className="pointer-events-none absolute left-3.5 h-4 w-4 text-muted" />
+      <input type="search" value={query} autoFocus={autoFocus} onChange={(e) => setQuery(e.target.value)}
+        placeholder={PLACEHOLDERS[index]} aria-label="Search Crede"
+        className="h-full w-full rounded-full bg-transparent pl-10 pr-4 text-sm text-foreground outline-none placeholder:text-muted/80" />
+    </form>
   );
 }

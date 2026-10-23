@@ -17,3 +17,6 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 meilisearch==0.31.0
 openpyxl==3.1.5
+weasyprint==63.1
+pillow==11.0.0
+pypdf==5.1.0

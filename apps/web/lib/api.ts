@@ -7,7 +7,7 @@ function apiBase(): string {
   if (typeof window !== "undefined") {
     return "/backend";
   }
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8008";
+  return process.env.API_PROXY_TARGET || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 }
 
 export type CredeUser = {
@@ -92,6 +92,26 @@ export const getAccountsSession = getSession;
 export const loginWithCollab = login;
 export type CollabUser = CredeUser;
 
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+  constructor(message: string, status: number, detail?: unknown) {
+    super(message);
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+function detailMessage(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d?.msg).filter(Boolean).join(", ") || "Please check the form";
+  if (detail && typeof detail === "object") {
+    const d = detail as { message?: string; missing?: string[] };
+    if (d.message) return d.missing?.length ? `${d.message}: ${d.missing.join(", ")}` : d.message;
+  }
+  return fallback || "Request failed";
+}
+
 /** Core request helper — paths may be "/api/..." or "/profile/me" (auto-prefixed with /api) */
 async function request<T>(
   method: string,
@@ -146,10 +166,7 @@ async function request<T>(
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    const detail = err.detail;
-    throw new Error(
-      typeof detail === "string" ? detail : res.statusText || "Request failed"
-    );
+    throw new ApiError(detailMessage(err.detail, res.statusText), res.status, err.detail);
   }
   if (res.status === 204) return undefined as T;
   return res.json();

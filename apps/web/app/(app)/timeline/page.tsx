@@ -1,598 +1,168 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
+import { BriefcaseBusiness, ChevronDown, GraduationCap, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { TextAction } from "@/components/ui/TextAction";
-import { CircleCheckbox } from "@/components/ui/CircleCheckbox";
-import { IconButton } from "@/components/ui/IconButton";
-import {
-  ChevronDown,
-  ChevronUp,
-  Pencil,
-  ShieldCheck,
-  Users,
-  Trash2,
-  Check,
-} from "lucide-react";
+import { useApi } from "@/lib/hooks";
+import { cn, fmtMonth } from "@/lib/utils";
+import { EmptyState, ErrorNote, PageHeader, Sheet, SkeletonList, SoftIcon, Switch, toast } from "@/components/ui/kit";
+import { OrgPicker, VerifyLine, type VInfo } from "@/components/orgs";
 
 type Entry = {
-  id: number;
-  job_title: string;
-  organization: string;
-  industry?: string;
-  employment_type?: string;
-  start_date: string;
-  end_date?: string;
-  is_current: boolean;
-  verification_status: string;
-  achievements?: string[];
-  responsibilities?: string[];
-  description?: string;
-  team_size?: number;
-  budget_managed?: string;
+  id: number; entry_type: "work" | "education"; job_title: string; organization: string; organization_id?: number | null; field_of_study?: string | null; grade?: string | null;
+  location?: string | null; industry?: string | null; employment_type?: string | null; start_date: string; end_date?: string | null; is_current: boolean;
+  description?: string | null; responsibilities?: string[] | null; achievements?: string[] | null; verification_status?: string; verification?: VInfo;
 };
-
-type Occ = {
-  id: number;
-  title: string;
-  definition?: string;
-  tasks?: string;
-  skills_suggested?: string[];
-  aliases?: string[];
+type Form = {
+  id?: number; entry_type: "work" | "education"; job_title: string; organization: string; organization_id: number | null; can_verify?: boolean; field_of_study: string; grade: string;
+  location: string; employment_type: string; start: string; end: string; is_current: boolean; description: string; responsibilities: string; achievements: string;
 };
+const EMP = [["full_time", "Full-time"], ["part_time", "Part-time"], ["contract", "Contract"], ["internship", "Internship"], ["nysc", "NYSC"], ["volunteer", "Volunteer"], ["freelance", "Freelance"]] as const;
+const blank = (t: "work" | "education"): Form => ({ entry_type: t, job_title: "", organization: "", organization_id: null, field_of_study: "", grade: "", location: "", employment_type: "full_time", start: "", end: "", is_current: false, description: "", responsibilities: "", achievements: "" });
+const lines = (s: string) => s.split("\n").map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
 
-const emptyForm = {
-  job_title: "",
-  organization: "",
-  industry: "",
-  employment_type: "full_time",
-  start_date: "",
-  end_date: "",
-  is_current: false,
-  description: "",
-  achievements: "",
-  responsibilities: "",
-  team_size: "",
-  budget_managed: "",
-};
+function period(e: Entry) { return `${fmtMonth(e.start_date)} – ${e.is_current ? "Present" : e.end_date ? fmtMonth(e.end_date) : "—"}`; }
 
-const employmentTypes = [
-  { value: "full_time", label: "Full-time" },
-  { value: "part_time", label: "Part-time" },
-  { value: "contract", label: "Contract" },
-  { value: "freelance", label: "Freelance" },
-  { value: "internship", label: "Internship" },
-];
-
-function StatusBadge({ status }: { status: string }) {
-  const v = (status || "unverified").toLowerCase();
-  if (v === "verified") {
-    return (
-      <span className="badge-verified">
-        <ShieldCheck className="h-3.5 w-3.5" />
-        Verified
-      </span>
-    );
-  }
-  if (v === "pending") {
-    return <span className="badge-pending">Pending</span>;
-  }
-  return <span className="badge-unverified">Unverified</span>;
-}
-
-function EntryFormFields({
-  form,
-  setForm,
-  titleHints,
-  occDetail,
-  searchTitles,
-  setOccDetail,
-  setTitleHints,
-}: {
-  form: typeof emptyForm;
-  setForm: (f: typeof emptyForm) => void;
-  titleHints: Occ[];
-  occDetail: Occ | null;
-  searchTitles: (q: string) => void;
-  setOccDetail: (o: Occ | null) => void;
-  setTitleHints: (h: Occ[]) => void;
-}) {
+function EntryCard({ e, onEdit, onDelete }: { e: Entry; onEdit: () => void; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const edu = e.entry_type === "education";
+  const more = !!(e.description || e.achievements?.length || e.responsibilities?.length);
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="label">Job title</label>
-        <input
-          className="input"
-          required
-          value={form.job_title}
-          onChange={(e) => {
-            setForm({ ...form, job_title: e.target.value });
-            searchTitles(e.target.value);
-          }}
-          placeholder="e.g. Product Manager"
-        />
-        {titleHints.length > 0 && (
-          <div className="mt-2 space-y-1 border border-border bg-background p-2">
-            {titleHints.map((h) => (
-              <button
-                key={h.id}
-                type="button"
-                className="block w-full px-2 py-1.5 text-left text-sm text-muted hover:bg-border/30 hover:text-foreground"
-                onClick={() => {
-                  setForm({ ...form, job_title: h.title });
-                  setOccDetail(h);
-                  setTitleHints([]);
-                }}
-              >
-                {h.title}
-              </button>
-            ))}
+    <li className="relative pl-12">
+      <span className="absolute left-0 top-4"><SoftIcon icon={edu ? GraduationCap : BriefcaseBusiness} tint={edu ? "violet" : "blue"} size="sm" /></span>
+      <div className="card group p-4">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold leading-snug">{e.job_title}{edu && e.field_of_study ? `, ${e.field_of_study}` : ""}</p>
+            <p className="text-sm text-muted">{[e.organization, e.location, !edu && EMP.find((x) => x[0] === e.employment_type)?.[1], edu && e.grade].filter(Boolean).join(" · ")}</p>
+            <p className="mt-0.5 text-xs tabular text-muted">{period(e)}</p>
+          </div>
+          <div className="flex shrink-0 gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
+            <button type="button" className="btn btn-ghost btn-sm px-2" aria-label="Edit" onClick={onEdit}><Pencil className="h-4 w-4" /></button>
+            <button type="button" className="btn btn-ghost btn-sm px-2 text-danger" aria-label="Delete" onClick={onDelete}><Trash2 className="h-4 w-4" /></button>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <VerifyLine status={e.verification_status} info={e.verification} orgName={e.organization} kind={edu ? "school" : "company"} />
+          {more && <button type="button" onClick={() => setOpen(!open)} className="link-muted inline-flex items-center gap-0.5 text-xs">{open ? "Less" : "Details"}<ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} /></button>}
+        </div>
+        {open && (
+          <div className="mt-3 space-y-2 border-t border-border pt-3 text-sm">
+            {e.description && <p className="text-muted">{e.description}</p>}
+            {!!e.achievements?.length && <ul className="list-disc space-y-1 pl-5">{e.achievements.map((a) => <li key={a}>{a}</li>)}</ul>}
+            {!!e.responsibilities?.length && <ul className="list-disc space-y-1 pl-5 text-muted">{e.responsibilities.map((a) => <li key={a}>{a}</li>)}</ul>}
           </div>
         )}
-        {occDetail?.definition && (
-          <p className="mt-2 text-xs text-muted">{occDetail.definition}</p>
-        )}
       </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="label">Organization</label>
-          <input
-            className="input"
-            required
-            value={form.organization}
-            onChange={(e) => setForm({ ...form, organization: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="label">Industry</label>
-          <input
-            className="input"
-            value={form.industry}
-            onChange={(e) => setForm({ ...form, industry: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div>
-        <p className="label">Employment type</p>
-        <div className="mt-1 flex flex-wrap gap-4">
-          {employmentTypes.map((t) => (
-            <CircleCheckbox
-              key={t.value}
-              checked={form.employment_type === t.value}
-              onChange={() => setForm({ ...form, employment_type: t.value })}
-              label={t.label}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="label">Start date</label>
-          <input
-            type="date"
-            className="input"
-            required
-            value={form.start_date}
-            onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="label">End date</label>
-          <input
-            type="date"
-            className="input"
-            disabled={form.is_current}
-            value={form.end_date}
-            onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <CircleCheckbox
-        checked={form.is_current}
-        onChange={(v) => setForm({ ...form, is_current: v, end_date: v ? "" : form.end_date })}
-        label="Currently working here"
-      />
-
-      <div>
-        <label className="label">Description</label>
-        <textarea
-          className="input min-h-[80px] py-2"
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-        />
-      </div>
-      <div>
-        <label className="label">Responsibilities (one per line)</label>
-        <textarea
-          className="input min-h-[80px] py-2"
-          value={form.responsibilities}
-          onChange={(e) => setForm({ ...form, responsibilities: e.target.value })}
-        />
-      </div>
-      <div>
-        <label className="label">Achievements (one per line)</label>
-        <textarea
-          className="input min-h-[80px] py-2"
-          value={form.achievements}
-          onChange={(e) => setForm({ ...form, achievements: e.target.value })}
-        />
-      </div>
-    </div>
+    </li>
   );
 }
 
 export default function TimelinePage() {
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState(emptyForm);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [titleHints, setTitleHints] = useState<Occ[]>([]);
-  const [occDetail, setOccDetail] = useState<Occ | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [savedId, setSavedId] = useState<number | null>(null);
-  const [endorseId, setEndorseId] = useState<number | null>(null);
-  const [endorseNote, setEndorseNote] = useState("");
-  const [endorsed, setEndorsed] = useState<Set<number>>(new Set());
-  const [dirty, setDirty] = useState(false);
-
-  function load() {
-    api<Entry[]>("/api/timeline")
-      .then(setEntries)
-      .catch((e) => setError(e.message));
-  }
+  const { data, error, loading, reload, setData } = useApi<Entry[]>("/timeline");
+  const [form, setForm] = useState<Form | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    load();
+    const add = new URLSearchParams(window.location.search).get("add");
+    if (add === "education" || add === "work") setForm(blank(add));
   }, []);
 
-  const searchTitles = useCallback(async (q: string) => {
-    if (q.trim().length < 1) {
-      setTitleHints([]);
-      return;
-    }
-    try {
-      const rows = await api.get<Occ[]>(`/occupations/search?q=${encodeURIComponent(q)}&limit=12`);
-      setTitleHints(rows);
-    } catch {
-      setTitleHints([]);
-    }
-  }, []);
+  const sorted = [...(data || [])].sort((a, b) => (b.is_current ? 1 : 0) - (a.is_current ? 1 : 0) || b.start_date.localeCompare(a.start_date));
+  const work = sorted.filter((e) => e.entry_type !== "education");
+  const edu = sorted.filter((e) => e.entry_type === "education");
 
-  function updateForm(next: typeof emptyForm) {
-    setForm(next);
-    setDirty(true);
-    setSavedId(null);
+  function edit(e: Entry) {
+    setForm({ id: e.id, entry_type: e.entry_type === "education" ? "education" : "work", job_title: e.job_title, organization: e.organization, organization_id: e.organization_id || null,
+      field_of_study: e.field_of_study || "", grade: e.grade || "", location: e.location || "", employment_type: e.employment_type || "full_time",
+      start: e.start_date.slice(0, 7), end: (e.end_date || "").slice(0, 7), is_current: e.is_current, description: e.description || "",
+      responsibilities: (e.responsibilities || []).join("\n"), achievements: (e.achievements || []).join("\n") });
   }
-
-  function openAdd() {
-    setEditingId(null);
-    setForm(emptyForm);
-    setOccDetail(null);
-    setTitleHints([]);
-    setAdding(true);
-    setDirty(false);
-    setSavedId(null);
-  }
-
-  function openEdit(e: Entry) {
-    if ((e.verification_status || "").toLowerCase() === "verified") {
-      const ok = window.confirm(
-        "This timeline entry is verified. Editing will remove its verification status. You will need to re-submit proof. Continue?"
-      );
-      if (!ok) return;
-    }
-    setAdding(false);
-    setEditingId(e.id);
-    setForm({
-      job_title: e.job_title || "",
-      organization: e.organization || "",
-      industry: e.industry || "",
-      employment_type: e.employment_type || "full_time",
-      start_date: e.start_date ? e.start_date.slice(0, 10) : "",
-      end_date: e.end_date ? e.end_date.slice(0, 10) : "",
-      is_current: !!e.is_current,
-      description: e.description || "",
-      achievements: (e.achievements || []).join("\n"),
-      responsibilities: (e.responsibilities || []).join("\n"),
-      team_size: e.team_size != null ? String(e.team_size) : "",
-      budget_managed: e.budget_managed || "",
-    });
-    setOccDetail(null);
-    setTitleHints([]);
-    setDirty(false);
-    setSavedId(null);
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    const payload = {
-      job_title: form.job_title,
-      organization: form.organization,
-      industry: form.industry || undefined,
-      employment_type: form.employment_type,
-      start_date: form.start_date,
-      end_date: form.is_current ? null : form.end_date || null,
-      is_current: form.is_current,
-      description: form.description || undefined,
-      achievements: form.achievements
-        ? form.achievements.split("\n").map((s) => s.trim()).filter(Boolean)
-        : [],
-      responsibilities: form.responsibilities
-        ? form.responsibilities.split("\n").map((s) => s.trim()).filter(Boolean)
-        : [],
-      team_size: form.team_size ? Number(form.team_size) : undefined,
-      budget_managed: form.budget_managed || undefined,
+  async function save() {
+    if (!form) return;
+    if (!form.job_title.trim() || !form.organization.trim() || !form.start) { toast("Title, organisation and start date are required", "error"); return; }
+    setBusy(true);
+    const edu = form.entry_type === "education";
+    const body = {
+      entry_type: form.entry_type, job_title: form.job_title.trim(), organization: form.organization.trim(), organization_id: form.organization_id,
+      field_of_study: edu ? form.field_of_study || null : null, grade: edu ? form.grade || null : null, location: form.location || null,
+      employment_type: edu ? null : form.employment_type, start_date: `${form.start}-01`, end_date: form.is_current || !form.end ? null : `${form.end}-01`,
+      is_current: form.is_current, description: form.description || null,
+      responsibilities: edu ? null : lines(form.responsibilities), achievements: lines(form.achievements),
     };
     try {
-      if (editingId) {
-        await api.put(`/api/timeline/${editingId}`, payload);
-        setSavedId(editingId);
-        setDirty(false);
-        load();
-      } else {
-        await api.post("/api/timeline", payload);
-        setAdding(false);
-        setForm(emptyForm);
-        load();
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
+      const e = form.id ? await api.patch<Entry>(`/timeline/${form.id}`, body) : await api.post<Entry>("/timeline", body);
+      setData(form.id ? (data || []).map((x) => (x.id === e.id ? e : x)) : [...(data || []), e]);
+      toast(e.verification?.status === "pending" ? `Saved — ${e.verification.org?.name} has been asked to confirm` : "Saved");
+      setForm(null);
+    } catch (err) { toast(err instanceof Error ? err.message : "Couldn't save", "error"); } finally { setBusy(false); }
+  }
+  async function remove(e: Entry) {
+    if (!confirm(`Delete ${e.job_title}?`)) return;
+    setData((data || []).filter((x) => x.id !== e.id));
+    try { await api.delete(`/timeline/${e.id}`); } catch { reload(); }
   }
 
-  async function handleDelete(id: number) {
-    if (!window.confirm("Delete this timeline entry? This cannot be undone.")) return;
-    try {
-      await api.delete(`/api/timeline/${id}`);
-      if (editingId === id) setEditingId(null);
-      load();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Delete failed");
-    }
-  }
-
+  const isEdu = form?.entry_type === "education";
   return (
-    <div className="space-y-0">
-      <section className="note-section">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="page-title">Career Timeline</h1>
-            <p className="mt-1.5 text-sm text-muted">
-              Your verified career history is the source of truth for CVs, matching, and trust.
-            </p>
-          </div>
-          {!adding && (
-            <TextAction variant="primary" onClick={openAdd}>
-              Add new entry
-            </TextAction>
-          )}
+    <div className="mx-auto max-w-3xl">
+      <PageHeader eyebrow="Profile" title="Career timeline" lead="Your roles and education. Pick organisations from the list so they can verify you."
+        action={<div className="flex gap-1.5"><button type="button" className="btn btn-soft btn-sm" onClick={() => setForm(blank("education"))}><GraduationCap className="h-4 w-4" /><span className="hidden sm:inline">Education</span></button><button type="button" className="btn btn-primary btn-sm" onClick={() => setForm(blank("work"))}><Plus className="h-4 w-4" />Role</button></div>} />
+
+      {error ? <ErrorNote message={error} onRetry={reload} /> : loading && !data ? <SkeletonList n={3} /> : !sorted.length ? (
+        <EmptyState icon={BriefcaseBusiness} title="Start your timeline" body="Add your current or most recent role — NYSC and internships count." action={<button type="button" className="link text-sm" onClick={() => setForm(blank("work"))}>Add a role</button>} />
+      ) : (
+        <div className="space-y-8">
+          {[["Experience", work], ["Education", edu]].map(([label, items]) => (items as Entry[]).length > 0 && (
+            <section key={label as string}>
+              <p className="eyebrow mb-3">{label as string}</p>
+              <ul className="relative space-y-3 before:absolute before:bottom-4 before:left-4 before:top-4 before:w-px before:bg-border">
+                {(items as Entry[]).map((e) => <EntryCard key={e.id} e={e} onEdit={() => edit(e)} onDelete={() => remove(e)} />)}
+              </ul>
+            </section>
+          ))}
+          {edu.length === 0 && <button type="button" onClick={() => setForm(blank("education"))} className="link text-sm">Add education</button>}
         </div>
-      </section>
-
-      {error && (
-        <section className="note-section">
-          <p className="text-sm text-danger">{error}</p>
-        </section>
       )}
 
-      {!adding && entries.length === 0 && (
-        <section className="note-section">
-          <p className="text-sm text-muted">
-            Your career timeline is empty. Add your first role to start building a verifiable
-            professional record.
-          </p>
-          <TextAction variant="primary" className="mt-3" onClick={openAdd}>
-            Add your first role
-          </TextAction>
-        </section>
-      )}
-
-      {adding && (
-        <section className="note-section">
-          <h2 className="mb-4 text-lg font-medium">Add timeline entry</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <EntryFormFields
-              form={form}
-              setForm={updateForm}
-              titleHints={titleHints}
-              occDetail={occDetail}
-              searchTitles={searchTitles}
-              setOccDetail={setOccDetail}
-              setTitleHints={setTitleHints}
-            />
-            <div className="flex items-center gap-4 pt-2">
-              <button type="submit" className="text-action" disabled={saving}>
-                {saving ? "Saving…" : "Add entry"}
-              </button>
-              <TextAction
-                variant="muted"
-                onClick={() => {
-                  setAdding(false);
-                  setForm(emptyForm);
-                }}
-              >
-                Cancel
-              </TextAction>
+      <Sheet open={!!form} onClose={() => setForm(null)} title={form?.id ? "Edit" : isEdu ? "Add education" : "Add role"}
+        footer={<button type="button" className="btn btn-primary w-full" disabled={busy} onClick={save}>{busy && <Loader2 className="h-4 w-4 animate-spin" />}Save</button>}>
+        {form && (
+          <div className="space-y-4">
+            {!form.id && (
+              <div className="grid grid-cols-2 rounded-full bg-surface-2 p-1">
+                {(["work", "education"] as const).map((t) => <button key={t} type="button" onClick={() => setForm({ ...form, entry_type: t, organization: "", organization_id: null })} className={cn("rounded-full py-1.5 text-sm", form.entry_type === t ? "bg-surface font-medium shadow-sm" : "text-muted")}>{t === "work" ? "Work" : "Education"}</button>)}
+              </div>
+            )}
+            <div><label className="label">{isEdu ? "Degree or qualification" : "Job title"}</label><input className="input" value={form.job_title} onChange={(e) => setForm({ ...form, job_title: e.target.value })} placeholder={isEdu ? "B.Sc., HND, OND, WAEC…" : "e.g. Customer Success Lead"} /></div>
+            <div>
+              <label className="label">{isEdu ? "School" : "Organisation"}</label>
+              <OrgPicker key={`${form.entry_type}${form.id ?? ""}`} type={isEdu ? "school" : "company"} value={form.organization} placeholder={isEdu ? "e.g. University of Lagos" : "e.g. Dangote Group"}
+                onPick={(o) => setForm((f) => f && ({ ...f, organization: o.name, organization_id: o.id, can_verify: o.claim_status === "approved" }))} />
+              <p className="mt-1 text-[11px] text-muted">{form.organization_id ? (form.can_verify ? `${form.organization} verifies on Crede — we'll ask them to confirm this.` : `${form.organization} isn't verifying yet — you can add evidence later.`) : "Choose from the list to enable verification. Not listed? Type the full name."}</p>
             </div>
-          </form>
-        </section>
-      )}
-
-      <div>
-        {entries.map((entry) => {
-          const isExpanded = expandedId === entry.id;
-          const isEditing = editingId === entry.id;
-          return (
-            <article key={entry.id} className="note-section">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-base font-medium text-foreground">{entry.job_title}</h2>
-                  <p className="mt-0.5 text-sm text-muted">
-                    {entry.organization}
-                    {entry.industry ? ` · ${entry.industry}` : ""}
-                  </p>
-                  <p className="mt-1 text-xs text-muted">
-                    {entry.start_date}
-                    {" → "}
-                    {entry.is_current ? "Present" : entry.end_date || "—"}
-                    {entry.employment_type
-                      ? ` · ${entry.employment_type.replace("_", " ")}`
-                      : ""}
-                  </p>
-                </div>
-                <StatusBadge status={entry.verification_status} />
+            {isEdu ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="label">Field of study</label><input className="input" value={form.field_of_study} onChange={(e) => setForm({ ...form, field_of_study: e.target.value })} /></div>
+                <div><label className="label">Grade</label><input className="input" value={form.grade} onChange={(e) => setForm({ ...form, grade: e.target.value })} placeholder="Second Class Upper" /></div>
               </div>
-
-              {isExpanded && !isEditing && (
-                <div className="mt-4 space-y-3 border-t border-border pt-4 text-sm">
-                  {entry.description && <p className="text-foreground">{entry.description}</p>}
-                  {entry.responsibilities && entry.responsibilities.length > 0 && (
-                    <div>
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">
-                        Responsibilities
-                      </p>
-                      <ul className="list-inside list-disc space-y-0.5 text-foreground">
-                        {entry.responsibilities.map((r, i) => (
-                          <li key={i}>{r}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {entry.achievements && entry.achievements.length > 0 && (
-                    <div>
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">
-                        Achievements
-                      </p>
-                      <ul className="list-inside list-disc space-y-0.5 text-foreground">
-                        {entry.achievements.map((a, i) => (
-                          <li key={i}>{a}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {endorseId === entry.id && (
-                <div className="mt-4 space-y-2 border-t border-border pt-4">
-                  <p className="text-sm font-medium">Request peer endorsement</p>
-                  <textarea
-                    className="input min-h-[60px] py-2 text-sm"
-                    placeholder="Short note for your endorser (optional)"
-                    value={endorseNote}
-                    onChange={(e) => setEndorseNote(e.target.value)}
-                  />
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                    <TextAction
-                      variant="primary"
-                      onClick={() => {
-                        setEndorsed((s) => new Set(s).add(entry.id));
-                        setEndorseId(null);
-                        setEndorseNote("");
-                      }}
-                    >
-                      Send request
-                    </TextAction>
-                    <TextAction variant="muted" onClick={() => setEndorseId(null)}>
-                      Cancel
-                    </TextAction>
-                  </div>
-                </div>
-              )}
-
-              {endorsed.has(entry.id) && (
-                <p className="mt-2 text-xs text-success">
-                  Endorsement requested — raises verification score when accepted
-                </p>
-              )}
-
-              {/* Icon actions */}
-              <div className="mt-4 flex flex-wrap items-center gap-1">
-                <IconButton
-                  label={isExpanded ? "Hide details" : "Show details"}
-                  onClick={() => setExpandedId(isExpanded ? null : entry.id)}
-                  active={isExpanded}
-                >
-                  {isExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </IconButton>
-                <IconButton
-                  label="Edit"
-                  onClick={() => openEdit(entry)}
-                  active={isEditing}
-                >
-                  <Pencil className="h-4 w-4" />
-                </IconButton>
-                <IconButton label="Request verification" href="/verification">
-                  <ShieldCheck className="h-4 w-4" />
-                </IconButton>
-                <IconButton
-                  label="Request endorsement"
-                  onClick={() => setEndorseId(entry.id)}
-                >
-                  <Users className="h-4 w-4" />
-                </IconButton>
-                <IconButton label="Delete" danger onClick={() => handleDelete(entry.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </IconButton>
-              </div>
-
-              {/* Inline edit form under this entry */}
-              {isEditing && (
-                <form
-                  onSubmit={handleSubmit}
-                  className="mt-5 space-y-4 border-t border-border pt-5"
-                >
-                  <EntryFormFields
-                    form={form}
-                    setForm={updateForm}
-                    titleHints={titleHints}
-                    occDetail={occDetail}
-                    searchTitles={searchTitles}
-                    setOccDetail={setOccDetail}
-                    setTitleHints={setTitleHints}
-                  />
-                  <div className="flex items-center gap-4 pt-1">
-                    {savedId === entry.id && !dirty ? (
-                      <span className="inline-flex items-center gap-1.5 text-sm text-success">
-                        <Check className="h-4 w-4" />
-                        Saved
-                      </span>
-                    ) : (
-                      <button type="submit" className="text-action" disabled={saving}>
-                        {saving ? "Saving…" : "Save changes"}
-                      </button>
-                    )}
-                    <TextAction
-                      variant="muted"
-                      onClick={() => {
-                        setEditingId(null);
-                        setDirty(false);
-                        setSavedId(null);
-                      }}
-                    >
-                      Cancel
-                    </TextAction>
-                  </div>
-                </form>
-              )}
-            </article>
-          );
-        })}
-      </div>
+            ) : (
+              <>
+                <div><label className="label">Location</label><input className="input" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Lagos, Remote…" /></div>
+                <div className="flex flex-wrap gap-1.5">{EMP.map(([k, l]) => <button key={k} type="button" onClick={() => setForm({ ...form, employment_type: k })} className={cn("chip", form.employment_type === k && "chip-active")}>{l}</button>)}</div>
+              </>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="label">Start</label><input type="month" className="input" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></div>
+              <div><label className="label">End</label><input type="month" className="input" disabled={form.is_current} value={form.is_current ? "" : form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></div>
+            </div>
+            <div className="flex items-center justify-between"><span className="text-sm">{isEdu ? "I'm studying here now" : "I currently work here"}</span><Switch label="Current" checked={form.is_current} onChange={(v) => setForm({ ...form, is_current: v })} /></div>
+            <div><label className="label">{isEdu ? "Achievements & activities" : "Achievements"} <span className="font-normal text-muted">· one per line</span></label><textarea className="input min-h-[96px]" value={form.achievements} onChange={(e) => setForm({ ...form, achievements: e.target.value })} placeholder={isEdu ? "Best graduating student, Dept. of Economics" : "Grew monthly sales 30% in 6 months"} /></div>
+            {!isEdu && <div><label className="label">Responsibilities <span className="font-normal text-muted">· one per line</span></label><textarea className="input min-h-[80px]" value={form.responsibilities} onChange={(e) => setForm({ ...form, responsibilities: e.target.value })} /></div>}
+            <div><label className="label">Description <span className="font-normal text-muted">· optional</span></label><textarea className="input min-h-[64px]" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+          </div>
+        )}
+      </Sheet>
     </div>
   );
 }

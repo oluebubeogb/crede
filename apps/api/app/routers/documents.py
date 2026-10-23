@@ -6,8 +6,8 @@ import logging
 import re
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -15,9 +15,11 @@ from app.auth import get_or_create_profile
 from app.database import SessionLocal, get_db
 from app.models import GeneratedDocument, GenerationHistory, Profile
 from app.schemas import DocumentOut, GenerateCVRequest, GenerateCVResponse, MatchingInsights
-from app.services.cv_generate import generate_document_markdown, jd_hash
-from app.services.cv_render import write_generated_files
-from app.services.storage import delete_file, read_bytes, exists
+from app.services.cv_generate import generate_content, jd_hash
+from app.services import doc_engine
+from app.services import jd_parse as jdp
+from app.services import matcher
+from app.services.storage import delete_file, read_bytes, exists, save_bytes
 
 logger = logging.getLogger("crede.documents")
 router = APIRouter(tags=["documents"])
@@ -67,18 +69,26 @@ def _extract_job_meta(jd: str) -> tuple[Optional[str], Optional[str]]:
                 title = candidate
                 break
     if not title:
-        # first non-empty line if short enough (strip md first)
-        for line in text.splitlines():
-            line = _strip_md_markers(line.strip())
-            if not line:
-                continue
-            low = line.lower()
-            if 8 <= len(line) <= 80 and not low.startswith(
-                ("we are", "about", "the ", "responsibilities", "requirements", "qualifications")
-            ):
-                title = line[:120]
-                break
-    for pat in patterns_org:
+        m = re.search(r"(?i)\b(?:hiring|looking for|seeking|recruiting)\s+(?:an?\s+)?([A-Z][\w/&()\- ]{3,70}?)(?:\s+(?:to|who|in|at|for|with)\b|[.,\n])", text)
+        if m:
+            title = m.group(1).strip()[:120]
+    if not title:
+        # "Senior Backend Engineer at Moniepoint, Lagos." as the opening sentence
+        first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+        m = re.match(r"^([A-Z][\w/&()\- ]{2,70}?)\s+(?:at|@|-|–|—|\|)\s+([A-Z][\w&.\- ]{1,60}?)(?:\s*[,.(|]|\s+in\s|$)", _strip_md_markers(first))
+        if m and len(m.group(1).split()) <= 8:
+            title = m.group(1).strip()
+            org = org or m.group(2).strip()
+    if not title:
+        # only the very first line, and only if it looks like a title (not a bullet/requirement/heading)
+        first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+        line = _strip_md_markers(first)
+        low = line.lower()
+        if (3 <= len(line) <= 80 and len(line.split()) <= 10 and not re.match(r"^\s*([-*•]|\d+[.)])", first)
+                and not line.endswith(":") and not re.search(r"\d+\s*\+?\s*(years?|yrs)", low)
+                and not low.startswith(("we ", "we're", "about", "the ", "responsibilities", "requirements", "qualifications", "our "))):
+            title = line[:120]
+    for pat in ([] if org else patterns_org):
         m = re.search(pat, text, re.M)
         if m:
             candidate = _strip_md_markers(m.group(1).strip().split("\n")[0])[:120]
@@ -121,6 +131,50 @@ def _doc_out(doc: GeneratedDocument) -> dict:
     }
 
 
+def _content_of(doc: GeneratedDocument) -> tuple[dict, bool]:
+    snap = doc.content_snapshot or {}
+    if snap.get("v") == 3 and isinstance(snap.get("content"), dict):
+        return snap["content"], False
+    return doc_engine.legacy_markdown_content(snap.get("markdown") or ""), True
+
+
+def _html_for(doc: GeneratedDocument, style: dict, screen: bool) -> str:
+    content, legacy = _content_of(doc)
+    if legacy:
+        return doc_engine.render_legacy_html(content, style, screen)
+    return doc_engine.render_html(doc.doc_type, content, style, screen)
+
+
+def render_and_store(db: Session, doc: GeneratedDocument) -> None:
+    """Render saved content + style to PDF and DOCX on disk (no AI)."""
+    snap = dict(doc.content_snapshot or {})
+    style = doc_engine.normalize_style(snap.get("style"), doc.template)
+    content, legacy = _content_of(doc)
+    pdf, pages = doc_engine.render_pdf(_html_for(doc, style, False))
+    docx = doc_engine.render_docx(doc.doc_type if not legacy else "cv", content, style)
+    doc.storage_key_pdf = save_bytes(f"generated/{doc.profile_id}/{doc.id}.pdf", pdf)
+    doc.storage_key_docx = save_bytes(f"generated/{doc.profile_id}/{doc.id}.docx", docx)
+    snap["style"], snap["pages"] = style, pages
+    snap["checks"] = doc_engine.checks(doc.doc_type, content, pages) if not legacy else []
+    doc.template = style["template"]
+    doc.content_snapshot = snap
+    db.commit()
+
+
+async def analyze_jd(db: Session, profile: Profile, jd: str, use_ai: bool = True) -> dict:
+    """Parse once (cached by jd_hash) and run the unified matcher."""
+    job_title, org = _extract_job_meta(jd)
+    h, parsed = await jdp.parse(db, jd, title=job_title or "", use_ai=use_ai)
+    result = matcher.match_cached(db, profile, f"jd:{h[:40]}", parsed, h)
+    reqs = result.get("requirements") or []
+    return {
+        **result, "jd_hash": h,
+        "parsed": {k: parsed.get(k) for k in ("title", "seniority", "years_min", "skills", "tools", "education", "certifications", "location", "source")},
+        "strengths": [r["text"] for r in reqs if r["status"] == "met"][:8],
+        "gaps": [r["text"] for r in reqs if r["status"] == "missing"][:8],
+    }
+
+
 async def _run_generate_job(doc_id: int, profile_id: int, jd: str, doc_type: str, template: str) -> None:
     """Background worker — own DB session; not bound to request lifetime."""
     db = SessionLocal()
@@ -131,39 +185,44 @@ async def _run_generate_job(doc_id: int, profile_id: int, jd: str, doc_type: str
             return
         doc.status = "processing"
         db.commit()
-
-        # Ensure relationships loaded
-        _ = profile.timeline_entries
-        _ = profile.skills
-        _ = profile.certifications
-
-        snapshot = await generate_document_markdown(profile, jd, doc_type=doc_type, template=template)
-        insights = snapshot.get("matching") or {}
-        job_title = doc.target_job_title
-        name = profile.full_name or profile.email
-        doc.title = _doc_title(doc_type, job_title, name)
-        doc.matching_insights = insights
+        _ = profile.timeline_entries, profile.skills, profile.certifications
+        try:
+            analysis = await analyze_jd(db, profile, jd)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("analysis during generate failed: %s", e)
+            analysis = {}
+        h = analysis.get("jd_hash")
+        parsed = jdp.cached(db, h) if h else None
+        if doc.history_id and analysis:
+            hist = db.query(GenerationHistory).filter(GenerationHistory.id == doc.history_id).first()
+            if hist:
+                hist.analysis = analysis
+        if doc_type == "bio":
+            from app.services.cv_generate import generate_document_markdown
+            snapshot = await generate_document_markdown(profile, jd, "bio", template)
+        else:
+            snapshot = await generate_content(profile, jd, doc_type, parsed, analysis, doc.target_job_title, doc.target_organization)
+        snapshot["style"] = doc_engine.normalize_style({"template": template}, template)
+        doc.title = _doc_title(doc_type, doc.target_job_title, profile.full_name or profile.email)
+        doc.matching_insights = {"score": analysis.get("score"), "label": analysis.get("label"), "counts": analysis.get("counts"),
+                                 "missing": analysis.get("gaps"), "strengths": analysis.get("strengths")}
         doc.content_snapshot = snapshot
+        db.commit()
+        try:
+            render_and_store(db, doc)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("File render failed for doc %s: %s", doc_id, e)
         doc.status = "ready"
         doc.error_message = None
         db.commit()
-        db.refresh(doc)
-
-        try:
-            pdf_key, docx_key = write_generated_files(profile.id, doc.id, snapshot, template)
-            doc.storage_key_pdf = pdf_key
-            doc.storage_key_docx = docx_key
-            db.commit()
-        except Exception as e:
-            logger.warning("File render failed for doc %s: %s", doc_id, e)
     except Exception as e:
         logger.exception("Background generate failed doc_id=%s", doc_id)
         try:
+            db.rollback()
             doc = db.query(GeneratedDocument).filter(GeneratedDocument.id == doc_id).first()
             if doc:
                 doc.status = "failed"
                 doc.error_message = str(e)[:500]
-                # still store a heuristic snapshot if possible
                 db.commit()
         except Exception:
             db.rollback()
@@ -188,11 +247,32 @@ class DocumentDetail(BaseModel):
     content_snapshot: Optional[dict] = None
     matching_insights: Optional[dict] = None
     markdown: Optional[str] = None
+    style: Optional[dict] = None
+    pages: Optional[int] = None
+    checks: list = []
+    content: Optional[dict] = None
+    legacy: bool = False
+    history_id: Optional[int] = None
 
 
 class DocumentUpdate(BaseModel):
-    markdown: str = Field(..., min_length=1)
+    markdown: Optional[str] = None
+    content: Optional[dict] = None
     title: Optional[str] = None
+
+
+class StyleIn(BaseModel):
+    template: Optional[str] = None
+    color: Optional[str] = None
+    font: Optional[str] = None
+    density: Optional[str] = None
+    ats: Optional[bool] = None
+    show_verified: Optional[bool] = None
+
+
+class AnalysisIn(BaseModel):
+    job_description: str = Field(..., min_length=20, max_length=30000)
+    save: bool = True
 
 
 class DocumentListOut(BaseModel):
@@ -218,7 +298,7 @@ class GenerateAccepted(BaseModel):
 
 
 class AnalysisPayload(BaseModel):
-    score: int
+    score: Optional[int] = None
     strengths: list[str] = []
     gaps: list[str] = []
 
@@ -250,27 +330,6 @@ class HistoryDetail(BaseModel):
     created_at: object
     updated_at: object
     documents: list[dict] = []
-
-
-def _compute_analysis(jd: str) -> dict:
-    """Simple keyword-based match analysis (mirrors current client logic)."""
-    words = (jd or "").lower()
-    strengths: list[str] = []
-    gaps: list[str] = []
-    if "lead" in words or "senior" in words or "manage" in words:
-        strengths.append("Leadership language detected — highlight management achievements.")
-    if "remote" in words or "hybrid" in words:
-        strengths.append("Remote/hybrid role — emphasize async collaboration.")
-    skill_hints = ["python", "react", "sql", "aws", "communication", "stakeholder", "analytics"]
-    for s in skill_hints:
-        if s in words:
-            strengths.append(f"Mentions {s} — surface related timeline evidence.")
-    if "metric" not in words and "%" not in words and "increased" not in words:
-        gaps.append("Job emphasizes impact — add quantified achievements to timeline entries.")
-    if not strengths:
-        strengths.append("General professional fit based on your verified timeline.")
-    score = min(92, 55 + len(strengths) * 8 - len(gaps) * 5)
-    return {"score": score, "strengths": strengths, "gaps": gaps}
 
 
 def _history_out(h: GenerationHistory, docs: list | None = None) -> dict:
@@ -323,6 +382,8 @@ def _get_or_create_history(
         existing.job_description = job_description
         existing.title = title
         existing.organization = org
+        if analysis is not None:
+            existing.analysis = analysis
         db.commit()
         db.refresh(existing)
         return existing
@@ -370,6 +431,11 @@ def list_documents(
     }
 
 
+@router.get("/documents/style-options")
+def get_style_options():
+    return doc_engine.style_options()
+
+
 @router.get("/documents/{doc_id}", response_model=DocumentDetail)
 def get_document(
     doc_id: int,
@@ -390,6 +456,12 @@ def get_document(
         content_snapshot=snap,
         matching_insights=doc.matching_insights,
         markdown=snap.get("markdown"),
+        style=doc_engine.normalize_style(snap.get("style"), doc.template),
+        pages=snap.get("pages"),
+        checks=snap.get("checks") or [],
+        content=snap.get("content") if snap.get("v") == 3 else None,
+        legacy=snap.get("v") != 3,
+        history_id=getattr(doc, "history_id", None),
     )
 
 
@@ -410,7 +482,16 @@ def update_document(
     if (doc.status or "") in ("pending", "processing"):
         raise HTTPException(409, "Document is still generating")
     snap = dict(doc.content_snapshot or {})
-    snap["markdown"] = body.markdown
+    if body.content is not None and snap.get("v") == 3:
+        # user edits structured content directly (still rendered by the template engine)
+        merged = dict(snap.get("content") or {})
+        for k, v in body.content.items():
+            if k in ("name", "headline", "summary", "highlights", "experience", "education", "skills", "certifications",
+                     "contact", "paragraphs", "salutation", "subject", "recipient", "closing", "signature", "date"):
+                merged[k] = v
+        snap["content"] = merged
+    elif body.markdown is not None:
+        snap["markdown"] = body.markdown
     snap["user_edited"] = True
     doc.content_snapshot = snap
     if body.title:
@@ -418,15 +499,9 @@ def update_document(
     db.commit()
     db.refresh(doc)
     try:
-        pdf_key, docx_key = write_generated_files(
-            profile.id, doc.id, snap, doc.template or "professional"
-        )
-        doc.storage_key_pdf = pdf_key
-        doc.storage_key_docx = docx_key
-        db.commit()
-        db.refresh(doc)
-    except Exception:
-        pass
+        render_and_store(db, doc)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("re-render failed: %s", e)
     return get_document(doc_id, profile, db)
 
 
@@ -517,7 +592,7 @@ async def generate_cv(
     job_title, org = _extract_job_meta(jd)
     title = _doc_title(body.doc_type or "cv", job_title, profile.full_name or profile.email)
 
-    analysis = _compute_analysis(jd)
+    analysis = None
     if history:
         # Refresh analysis / meta on the existing entry
         if not history.analysis:
@@ -577,7 +652,11 @@ def download_pdf(
         .filter(GeneratedDocument.id == doc_id, GeneratedDocument.profile_id == profile.id)
         .first()
     )
-    if not doc or not doc.storage_key_pdf or not exists(doc.storage_key_pdf):
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if (not doc.storage_key_pdf or not exists(doc.storage_key_pdf)) and doc.status == "ready":
+        render_and_store(db, doc)
+    if not doc.storage_key_pdf or not exists(doc.storage_key_pdf):
         raise HTTPException(404, "PDF not found — still generating or failed")
     data = read_bytes(doc.storage_key_pdf)
     fname = _safe_filename(
@@ -603,7 +682,11 @@ def download_docx(
         .filter(GeneratedDocument.id == doc_id, GeneratedDocument.profile_id == profile.id)
         .first()
     )
-    if not doc or not doc.storage_key_docx or not exists(doc.storage_key_docx):
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if (not doc.storage_key_docx or not exists(doc.storage_key_docx)) and doc.status == "ready":
+        render_and_store(db, doc)
+    if not doc.storage_key_docx or not exists(doc.storage_key_docx):
         raise HTTPException(404, "DOCX not found — still generating or failed")
     data = read_bytes(doc.storage_key_docx)
     fname = _safe_filename(
@@ -622,7 +705,7 @@ def download_docx(
 # ─── Generation History ──────────────────────────────────────────────────────
 
 @router.post("/history", response_model=HistoryDetail)
-def create_or_update_history(
+async def create_or_update_history(
     body: HistoryCreate,
     profile: Annotated[Profile, Depends(get_or_create_profile)],
     db: Annotated[Session, Depends(get_db)],
@@ -631,11 +714,7 @@ def create_or_update_history(
     Save (or update by JD hash) a job-description processing session.
     Called when the user analyzes a JD or before generation.
     """
-    analysis = None
-    if body.analysis:
-        analysis = body.analysis.model_dump()
-    else:
-        analysis = _compute_analysis(body.job_description)
+    analysis = await analyze_jd(db, profile, body.job_description)
     hist = _get_or_create_history(db, profile, body.job_description, analysis=analysis)
     docs = (
         db.query(GeneratedDocument)
@@ -656,7 +735,7 @@ def create_or_update_history(
 
 
 @router.post("/history/{history_id}/analyze", response_model=HistoryDetail)
-def analyze_history(
+async def analyze_history(
     history_id: int,
     profile: Annotated[Profile, Depends(get_or_create_profile)],
     db: Annotated[Session, Depends(get_db)],
@@ -669,7 +748,7 @@ def analyze_history(
     )
     if not hist:
         raise HTTPException(404, "History entry not found")
-    hist.analysis = _compute_analysis(hist.job_description or "")
+    hist.analysis = await analyze_jd(db, profile, hist.job_description or "")
     job_title, org = _extract_job_meta(hist.job_description or "")
     if job_title:
         hist.title = job_title
@@ -790,3 +869,70 @@ def delete_history(
     db.delete(hist)
     db.commit()
     return {"ok": True, "deleted_documents": len(docs)}
+
+
+# ─── v3: analysis, style step, live preview ─────────────────────────────────
+
+@router.post("/analysis")
+async def run_analysis(
+    body: AnalysisIn,
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Parse the JD once (AI or heuristic, cached) and match it against the profile. Saves to history."""
+    result = await analyze_jd(db, profile, body.job_description)
+    hist_id = None
+    if body.save:
+        hist = _get_or_create_history(db, profile, body.job_description, analysis=result)
+        hist_id = hist.id
+    return {**result, "history_id": hist_id}
+
+
+def _owned_doc(db: Session, profile: Profile, doc_id: int) -> GeneratedDocument:
+    doc = db.query(GeneratedDocument).filter(GeneratedDocument.id == doc_id, GeneratedDocument.profile_id == profile.id).first()
+    if not doc:
+        raise HTTPException(404, "Not found")
+    return doc
+
+
+@router.get("/documents/{doc_id}/preview", response_class=HTMLResponse)
+def preview_document(
+    doc_id: int,
+    request: Request,
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Live preview HTML. Query params (template, color, font, density, ats) override the saved style without saving."""
+    doc = _owned_doc(db, profile, doc_id)
+    saved = (doc.content_snapshot or {}).get("style") or {}
+    q = request.query_params
+    override = {k: q.get(k) for k in ("template", "color", "font", "density") if q.get(k)}
+    for k in ("ats", "show_verified"):
+        if q.get(k) is not None:
+            override[k] = q.get(k) in ("1", "true", "yes")
+    style = doc_engine.normalize_style({**saved, **override}, doc.template)
+    if override.get("template") and not any(k in override for k in ("color", "font", "density")) and q.get("keep") != "1":
+        style = doc_engine.normalize_style({"template": override["template"], "ats": style["ats"], "show_verified": style["show_verified"]})
+    return HTMLResponse(_html_for(doc, style, True), headers={"Cache-Control": "no-store", "X-Frame-Options": "SAMEORIGIN"})
+
+
+@router.post("/documents/{doc_id}/style")
+def save_document_style(
+    doc_id: int,
+    body: StyleIn,
+    profile: Annotated[Profile, Depends(get_or_create_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    doc = _owned_doc(db, profile, doc_id)
+    if (doc.status or "") in ("pending", "processing"):
+        raise HTTPException(409, "Document is still generating")
+    snap = dict(doc.content_snapshot or {})
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    if patch.get("color") and not doc_engine.HEX.match(patch["color"]):
+        raise HTTPException(422, "Colour must be a hex value like #2563EB")
+    snap["style"] = doc_engine.normalize_style({**(snap.get("style") or {}), **patch}, doc.template)
+    doc.content_snapshot = snap
+    db.commit()
+    render_and_store(db, doc)
+    db.refresh(doc)
+    return get_document(doc_id, profile, db)

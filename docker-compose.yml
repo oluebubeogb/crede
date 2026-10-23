@@ -1,41 +1,129 @@
-# Crede API — matches Phase 1 Coolify networking.
-# MUST join external network "coolify" so DATABASE_URL internal hostnames resolve.
-# Redis / Meilisearch are optional (leave REDIS_URL / MEILI_URL empty).
+# Crede — API + web + Postgres.
+# Coolify: create a "Docker Compose" resource from this repo, then set a domain on `web`
+# (e.g. https://crede.collab.name.ng:3001) and, optionally, on `api` (…:8008).
+# Every variable below can be edited in Coolify's Environment Variables tab.
+# Services use `expose` (not `ports`) — Coolify's proxy routes to them; nothing binds the host.
+# Plain Docker backup:  cp .env.example .env && docker compose up -d --build
+#   (then add a `ports:` override or put a reverse proxy in front of web:3001).
 
 services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-crede}
+      POSTGRES_USER: ${POSTGRES_USER:-crede}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crede-change-me}
+    # Lean settings for a small VPS.
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=40", "-c", "work_mem=4MB"]
+    volumes:
+      - crede_pg:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crede} -d ${POSTGRES_DB:-crede}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   api:
     build: ./apps/api
-    ports:
-      - "8008:8008"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8008"
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      SECRET_KEY: ${SECRET_KEY:-dev-secret}
+      # Core
+      DATABASE_URL: ${DATABASE_URL:-postgresql://crede:crede-change-me@db:5432/crede}
+      SECRET_KEY: ${SECRET_KEY:-change-me-to-a-long-random-string}
+      APP_URL: ${APP_URL:-https://crede.collab.name.ng}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+      # Auth
       AUTH_MODE: ${AUTH_MODE:-local}
       ACCOUNTS_URL: ${ACCOUNTS_URL:-https://accounts.collab.name.ng}
       ACCOUNTS_PUBLIC_URL: ${ACCOUNTS_PUBLIC_URL:-https://accounts.collab.name.ng}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://crede.collab.name.ng}
-      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-.collab.name.ng}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
-      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
-      LLM_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
-      LLM_MODEL: ${LLM_MODEL:-${OPENAI_MODEL:-gpt-4o-mini}}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      # AI — primary, any OpenAI-compatible API (blank provider/model/base fall back to OPENAI_* → openai / gpt-4o-mini)
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-120}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      # AI — secondary fallback (OpenAI-compatible)
+      LLM_SECONDARY_PROVIDER: ${LLM_SECONDARY_PROVIDER:-}
+      LLM_SECONDARY_API_KEY: ${LLM_SECONDARY_API_KEY:-}
+      LLM_SECONDARY_BASE_URL: ${LLM_SECONDARY_BASE_URL:-}
+      LLM_SECONDARY_MODEL: ${LLM_SECONDARY_MODEL:-}
+      # Storage
       STORAGE_ROOT: ${STORAGE_ROOT:-/data/crede}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-crede}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      # Mail — blank SMTP_HOST means emails are only logged
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-Crede <no-reply@collab.name.ng>}
+      SMTP_TLS: ${SMTP_TLS:-starttls}
+      MAIL_WORKER_INTERVAL_SECONDS: ${MAIL_WORKER_INTERVAL_SECONDS:-20}
+      # Organisations — false: official email domain AND admin approval; true: domain alone approves
+      ORG_DOMAIN_AUTO_APPROVE: ${ORG_DOMAIN_AUTO_APPROVE:-false}
+      # Collab Teams two-way org sync (same SUITE_SYNC_TOKEN on both apps; blank TEAMS_URL disables)
+      TEAMS_URL: ${TEAMS_URL:-}
+      SUITE_SYNC_TOKEN: ${SUITE_SYNC_TOKEN:-}
+      TEAMS_SYNC_INTERVAL_MINUTES: ${TEAMS_SYNC_INTERVAL_MINUTES:-30}
+      # Badges & payments — Paystack if its key is set, else Monnify, else simulated checkout (admins notified)
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      MONNIFY_API_KEY: ${MONNIFY_API_KEY:-}
+      MONNIFY_SECRET_KEY: ${MONNIFY_SECRET_KEY:-}
+      MONNIFY_CONTRACT_CODE: ${MONNIFY_CONTRACT_CODE:-}
+      MONNIFY_BASE_URL: ${MONNIFY_BASE_URL:-https://sandbox.monnify.com}
+      BADGE_PRICE_GRAY_NGN: ${BADGE_PRICE_GRAY_NGN:-2000}
+      BADGE_PRICE_GREEN_NGN: ${BADGE_PRICE_GREEN_NGN:-5000}
+      # Community
+      MAX_IMAGE_MB: ${MAX_IMAGE_MB:-8}
+      REPORT_AUTOHIDE_THRESHOLD: ${REPORT_AUTOHIDE_THRESHOLD:-3}
+      # Optional services (blank = disabled; search falls back to SQL)
       REDIS_URL: ${REDIS_URL:-}
       MEILI_URL: ${MEILI_URL:-}
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
     volumes:
       - crede_data:/data/crede
-    networks:
-      - coolify
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        API_PROXY_TARGET: ${API_PROXY_TARGET:-http://api:8008}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_ACCOUNTS_URL: ${NEXT_PUBLIC_ACCOUNTS_URL:-https://accounts.collab.name.ng}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://crede.collab.name.ng}
     restart: unless-stopped
+    depends_on:
+      - api
+    expose:
+      - "3001"
+    environment:
+      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://api:8008}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+      NEXT_PUBLIC_ACCOUNTS_URL: ${NEXT_PUBLIC_ACCOUNTS_URL:-https://accounts.collab.name.ng}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://crede.collab.name.ng}
 
 volumes:
+  crede_pg:
   crede_data:
-
-networks:
-  coolify:
-    external: true
-    name: coolify

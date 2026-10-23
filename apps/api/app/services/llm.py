@@ -155,58 +155,53 @@ async def _replicate_chat(
         raise LLMError(f"Replicate prediction did not complete: {status}")
 
 
+async def _call_provider(provider: str, key: str, base: str, model: str, system: str, user: str,
+                         temperature: float, max_tokens: int, timeout: float) -> str:
+    provider = (provider or "openai").lower()
+    if provider in ("openai", "runpod", "openai_compatible", "compatible"):
+        base = base or ("https://api.openai.com/v1" if provider == "openai" else "")
+        if not base:
+            raise LLMError("base URL required for OpenAI-compatible provider")
+        return await _openai_compatible_chat(base_url=base, api_key=key, model=model, system=system, user=user,
+                                             temperature=temperature, max_tokens=max_tokens, timeout=timeout)
+    if provider == "replicate":
+        return await _replicate_chat(api_key=key, model=model, system=system, user=user,
+                                     max_tokens=max_tokens, timeout=timeout)
+    raise LLMError(f"Unknown LLM provider: {provider}")
+
+
+def llm_available() -> bool:
+    s = get_settings()
+    return s.llm_enabled or s.llm_secondary_enabled
+
+
 async def chat_json(
     system: str,
     user: str,
     *,
     temperature: float = 0.2,
+    max_tokens: Optional[int] = None,
 ) -> dict[str, Any]:
     """
-    Call configured LLM and parse JSON object response.
-    Raises LLMError on failure; callers should fall back.
+    Call the primary LLM, falling back to the secondary (LLM_SECONDARY_*) on any failure.
+    Raises LLMError when both fail or none is configured; callers fall back to heuristics.
     """
     settings = get_settings()
-    if not settings.llm_enabled:
+    attempts: list[tuple[str, str, str, str, str]] = []
+    if settings.llm_enabled:
+        attempts.append(("primary", settings.llm_provider, settings.llm_api_key, settings.llm_base_url, settings.llm_model))
+    if settings.llm_secondary_enabled:
+        attempts.append(("secondary", settings.llm_secondary_provider or "openai", settings.llm_secondary_api_key,
+                         settings.llm_secondary_base_url, settings.llm_secondary_model or settings.llm_model))
+    if not attempts:
         raise LLMError("LLM disabled or missing API key")
-
-    provider = settings.llm_provider
-    key = settings.llm_api_key
-    model = settings.llm_model
-    timeout = settings.llm_timeout_seconds
-    max_tokens = settings.llm_max_tokens
-
-    try:
-        if provider in ("openai", "runpod"):
-            base = settings.llm_base_url or (
-                "https://api.openai.com/v1" if provider == "openai" else ""
-            )
-            if not base:
-                raise LLMError("LLM_BASE_URL required for runpod")
-            content = await _openai_compatible_chat(
-                base_url=base,
-                api_key=key,
-                model=model,
-                system=system,
-                user=user,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=timeout,
-            )
-        elif provider == "replicate":
-            content = await _replicate_chat(
-                api_key=key,
-                model=model,
-                system=system,
-                user=user,
-                max_tokens=max_tokens,
-                timeout=timeout,
-            )
-        else:
-            raise LLMError(f"Unknown LLM_PROVIDER: {provider}")
-    except LLMError:
-        raise
-    except Exception as e:
-        logger.exception("LLM call failed")
-        raise LLMError(str(e)) from e
-
-    return _extract_json(content)
+    errors = []
+    for label, provider, key, base, model in attempts:
+        try:
+            content = await _call_provider(provider, key, base, model, system, user, temperature,
+                                           max_tokens or settings.llm_max_tokens, settings.llm_timeout_seconds)
+            return _extract_json(content)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("LLM %s (%s) failed: %s", label, provider, str(e)[:300])
+            errors.append(f"{label}: {str(e)[:200]}")
+    raise LLMError("; ".join(errors))

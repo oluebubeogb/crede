@@ -1,343 +1,103 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { Award, BadgeCheck, BriefcaseBusiness, Camera, ExternalLink, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
-import { ExternalLink } from "lucide-react";
+import { useApi } from "@/lib/hooks";
+import { Avatar, ErrorNote, PageHeader, RowLink, Skeleton, Switch, VerifiedBadge, toast } from "@/components/ui/kit";
 
 type Profile = {
-  full_name?: string;
-  username?: string;
-  headline?: string;
-  industry?: string;
-  location?: string;
-  country?: string;
-  phone?: string;
-  phone_country_code?: string;
-  years_experience?: number;
-  summary?: string;
-  verification_score: number;
-  profile_completion: number;
+  id: number; email: string; full_name?: string | null; username?: string | null; headline?: string | null; industry?: string | null; location?: string | null;
+  phone?: string | null; years_experience?: number | null; summary?: string | null; is_public: boolean; avatar_url?: string | null; badge_level?: string | null;
+  profile_completion?: number; verification_score?: number; claims?: { label?: string; total: number; verified: number; pending: number };
 };
-
-const COUNTRY_CODES = [
-  { code: "+234", label: "NG +234" },
-  { code: "+233", label: "GH +233" },
-  { code: "+254", label: "KE +254" },
-  { code: "+27", label: "ZA +27" },
-  { code: "+1", label: "US/CA +1" },
-  { code: "+44", label: "UK +44" },
-  { code: "+91", label: "IN +91" },
-  { code: "+971", label: "AE +971" },
-  { code: "+49", label: "DE +49" },
-  { code: "+33", label: "FR +33" },
+const FIELDS: { key: keyof Profile; label: string; ph?: string; half?: boolean }[] = [
+  { key: "full_name", label: "Full name", half: true }, { key: "username", label: "Username", ph: "for crede.ng/u/…", half: true },
+  { key: "headline", label: "Headline", ph: "e.g. Accountant · ICAN · IFRS" },
+  { key: "location", label: "Location", ph: "Lagos, Nigeria", half: true }, { key: "industry", label: "Industry", ph: "Fintech, Oil & gas…", half: true },
+  { key: "phone", label: "Phone", ph: "+234…", half: true }, { key: "years_experience", label: "Years of experience", half: true },
 ];
 
-const WORLD_COUNTRIES = ['Afghanistan', 'Albania', 'Algeria', 'Argentina', 'Australia', 'Austria', 'Bahrain', 'Bangladesh', 'Belgium', 'Benin', 'Brazil', 'Cameroon', 'Canada', 'Chile', 'China', 'Colombia', "Côte d'Ivoire", 'Denmark', 'Egypt', 'Ethiopia', 'Finland', 'France', 'Germany', 'Ghana', 'Greece', 'Hong Kong', 'India', 'Indonesia', 'Ireland', 'Israel', 'Italy', 'Japan', 'Jordan', 'Kenya', 'Kuwait', 'Lebanon', 'Malaysia', 'Mexico', 'Morocco', 'Netherlands', 'New Zealand', 'Nigeria', 'Norway', 'Oman', 'Pakistan', 'Philippines', 'Poland', 'Portugal', 'Qatar', 'Romania', 'Rwanda', 'Saudi Arabia', 'Senegal', 'Singapore', 'South Africa', 'South Korea', 'Spain', 'Sweden', 'Switzerland', 'Tanzania', 'Thailand', 'Turkey', 'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States', 'Vietnam', 'Zambia', 'Zimbabwe'];
-
-function normalizeLocalPhone(raw: string): string {
-  return raw.replace(/[^\d]/g, "").replace(/^0+/, "");
-}
-
-function LiveCircle({
-  value,
-  max = 100,
-  label,
-  display,
-}: {
-  value: number;
-  max?: number;
-  label: string;
-  display?: string;
-}) {
-  const size = 96;
-  const stroke = 9;
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const pct = Math.min(100, Math.max(0, (value / max) * 100));
-  const offset = c - (pct / 100) * c;
-  const color =
-    pct >= 80 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct >= 25 ? "#f59e0b" : "#ef4444";
-
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="-rotate-90">
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={stroke}
-            className="text-border opacity-60"
-          />
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            fill="none"
-            stroke={color}
-            strokeWidth={stroke}
-            strokeLinecap="round"
-            strokeDasharray={c}
-            strokeDashoffset={offset}
-            className="transition-all duration-500 ease-out"
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-base font-semibold tabular-nums" style={{ color }}>
-            {display ?? `${Math.round(pct)}%`}
-          </span>
-        </div>
-      </div>
-      <p className="text-xs text-muted">{label}</p>
-    </div>
-  );
-}
-
 export default function ProfilePage() {
-  const [p, setP] = useState<Profile | null>(null);
+  const { data, error, loading, reload, setData } = useApi<Profile>("/profile/me");
   const [form, setForm] = useState<Partial<Profile>>({});
-  const [saved, setSaved] = useState(false);
-  const [countryQ, setCountryQ] = useState("");
-  const [showCountries, setShowCountries] = useState(false);
+  const [busy, setBusy] = useState<"save" | "avatar" | null>(null);
+  const file = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (data) setForm(data); }, [data]);
+  const dirty = !!data && FIELDS.concat([{ key: "summary", label: "" }]).some((f) => (form[f.key] ?? "") !== (data[f.key] ?? ""));
 
-  useEffect(() => {
-    api
-      .get<Profile>("/profile/me")
-      .then((data) => {
-        setP(data);
-        setForm({
-          ...data,
-          phone_country_code: data.phone_country_code || "+234",
-        });
-        setCountryQ(data.country || "");
-      })
-      .catch(console.error);
-  }, []);
-
-  const countryHints = useMemo(() => {
-    const q = countryQ.trim().toLowerCase();
-    if (q.length < 1) return [] as string[];
-    return WORLD_COUNTRIES.filter((c) => c.toLowerCase().includes(q)).slice(0, 8);
-  }, [countryQ]);
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    const local = form.phone ? normalizeLocalPhone(String(form.phone)) : "";
-    const dial = form.phone_country_code || "+234";
-    const e164 = local ? `${dial}${local}` : null;
-    const updated = await api.patch<Profile>("/profile/me", {
-      full_name: form.full_name,
-      headline: form.headline,
-      industry: form.industry,
-      location: form.location,
-      country: form.country,
-      phone: e164,
-      phone_country_code: dial,
-      years_experience: form.years_experience ? Number(form.years_experience) : null,
-      summary: form.summary,
-    });
-    setP(updated);
-    setForm({
-      ...updated,
-      phone_country_code: updated.phone_country_code || dial,
-      phone: updated.phone?.startsWith(dial)
-        ? updated.phone.slice(dial.length)
-        : updated.phone || "",
-    });
-    setCountryQ(updated.country || "");
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  async function save(patch?: Partial<Profile>) {
+    setBusy("save");
+    const body = patch || Object.fromEntries([...FIELDS.map((f) => f.key), "summary" as const].map((k) => [k, k === "years_experience" ? ((form[k] as unknown) === "" || form[k] == null ? null : Number(form[k])) : (form[k] as string) || null]));
+    try { const p = await api.patch<Profile>("/profile/me", body); setData(p); toast("Profile saved"); }
+    catch (e) { toast(e instanceof Error ? e.message : "Couldn't save", "error"); } finally { setBusy(null); }
+  }
+  async function upload(f?: File) {
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { toast("Image must be under 5 MB", "error"); return; }
+    setBusy("avatar");
+    const fd = new FormData(); fd.append("file", f);
+    try { setData(await api.postForm<Profile>("/profile/avatar", fd)); toast("Photo updated"); }
+    catch (e) { toast(e instanceof Error ? e.message : "Upload failed", "error"); } finally { setBusy(null); if (file.current) file.current.value = ""; }
   }
 
-  if (!p) return <p className="py-12 text-sm text-muted">Loading…</p>;
-
-  const publicPath = form.username || p.username ? `/u/${form.username || p.username}` : null;
-  const publicUrl =
-    typeof window !== "undefined" && publicPath
-      ? `${window.location.origin}${publicPath}`
-      : publicPath;
+  if (error) return <ErrorNote message={error} onRetry={reload} />;
+  if (loading && !data) return <div className="mx-auto max-w-3xl space-y-4"><Skeleton className="h-32 rounded-3xl" /><Skeleton className="h-80 rounded-3xl" /></div>;
+  if (!data) return null;
+  const pct = data.profile_completion ?? 0;
 
   return (
-    <div className="w-full space-y-0">
-      <section className="note-section">
-        <h1 className="page-title">Profile</h1>
-        <p className="page-lead">Your public professional identity on Crede.</p>
-      </section>
-
-      <section className="note-section">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted">
-          Public profile
-        </p>
-        {publicPath ? (
-          <Link
-            href={publicPath}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-accent hover:underline"
-          >
-            {publicUrl || publicPath}
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
-        ) : (
-          <p className="mt-2 text-sm text-muted">
-            Set a public username to get a shareable profile link.
-          </p>
-        )}
-      </section>
-
-      <section className="note-section">
-        <div className="flex flex-wrap justify-center gap-12 sm:justify-start">
-          <LiveCircle value={p.profile_completion} label="Profile completion" />
-          <LiveCircle
-            value={p.verification_score}
-            max={100}
-            label="Verification score"
-            display={`${p.verification_score}`}
-          />
+    <div className="mx-auto max-w-3xl">
+      <PageHeader eyebrow="Profile" title="Your profile" lead="This is what recruiters and verifiers see." />
+      <section className="card mb-6 flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
+        <button type="button" onClick={() => file.current?.click()} className="group relative self-start rounded-full" aria-label="Change photo">
+          <Avatar name={data.full_name} src={data.avatar_url} size={84} />
+          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100">{busy === "avatar" ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}</span>
+        </button>
+        <input ref={file} type="file" accept="image/*" className="hidden" onChange={(e) => upload(e.target.files?.[0])} />
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 text-lg font-semibold">{data.full_name || data.email}<VerifiedBadge level={data.badge_level} size={18} /></p>
+          <p className="text-sm text-muted">{data.headline || "Add a headline below"}</p>
+          {data.claims?.label && <p className="mt-1 text-xs text-muted"><ShieldCheck className="mr-1 inline h-3.5 w-3.5 text-success" />{data.claims.label}</p>}
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2"><div className="h-full rounded-full bg-accent transition-[width] duration-700" style={{ width: `${pct}%` }} /></div>
+          <p className="mt-1 text-[11px] tabular text-muted">Profile {pct}% complete</p>
+        </div>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <div className="flex items-center gap-2 text-sm"><span className="text-muted">Public</span><Switch label="Public profile" checked={data.is_public} onChange={(v) => save({ is_public: v })} /></div>
+          {data.is_public && data.username && <Link href={`/u/${data.username}`} className="link inline-flex items-center gap-1 text-sm">View public page<ExternalLink className="h-3.5 w-3.5" /></Link>}
         </div>
       </section>
 
-      <section className="note-section">
-        <form onSubmit={save} className="space-y-5">
-          <div>
-            <label className="label">Public username</label>
-            <input
-              className="input bg-border/20 text-muted"
-              value={form.username || p.username || ""}
-              readOnly
-              disabled
-            />
-            <p className="mt-1 text-xs text-muted">Public username cannot be edited</p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="label">Full name</label>
-              <input
-                className="input"
-                value={form.full_name ?? ""}
-                onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label">Headline</label>
-              <input
-                className="input"
-                value={form.headline ?? ""}
-                onChange={(e) => setForm({ ...form, headline: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <label className="label">Industry</label>
-              <input
-                className="input"
-                value={form.industry ?? ""}
-                onChange={(e) => setForm({ ...form, industry: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label">Location</label>
-              <input
-                className="input"
-                value={form.location ?? ""}
-                onChange={(e) => setForm({ ...form, location: e.target.value })}
-              />
-            </div>
-            <div className="relative">
-              <label className="label">Country</label>
-              <input
-                className="input"
-                value={countryQ}
-                placeholder="Start typing a country…"
-                autoComplete="off"
-                onChange={(e) => {
-                  setCountryQ(e.target.value);
-                  setForm({ ...form, country: e.target.value });
-                  setShowCountries(true);
-                }}
-                onFocus={() => setShowCountries(true)}
-                onBlur={() => setTimeout(() => setShowCountries(false), 150)}
-              />
-              {showCountries && countryHints.length > 0 && (
-                <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto border border-border bg-background text-sm shadow-lg">
-                  {countryHints.map((c) => (
-                    <li key={c}>
-                      <button
-                        type="button"
-                        className="w-full px-3 py-2 text-left hover:bg-border/30"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setCountryQ(c);
-                          setForm({ ...form, country: c });
-                          setShowCountries(false);
-                        }}
-                      >
-                        {c}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="label">Mobile number</label>
-              <div className="flex gap-2">
-                <select
-                  className="input w-[140px] shrink-0"
-                  value={form.phone_country_code || "+234"}
-                  onChange={(e) => setForm({ ...form, phone_country_code: e.target.value })}
-                >
-                  {COUNTRY_CODES.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="input flex-1"
-                  inputMode="tel"
-                  placeholder="8012345678"
-                  value={form.phone ?? ""}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_260px]">
+        <section className="card p-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {FIELDS.map((f) => (
+              <div key={f.key} className={f.half ? "" : "sm:col-span-2"}>
+                <label className="label">{f.label}</label>
+                <input className="input" type={f.key === "years_experience" ? "number" : "text"} min={0} value={(form[f.key] as string | number | undefined) ?? ""} placeholder={f.ph}
+                  onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
               </div>
-            </div>
-            <div>
-              <label className="label">Years of experience</label>
-              <input
-                type="number"
-                className="input"
-                value={form.years_experience ?? ""}
-                onChange={(e) => setForm({ ...form, years_experience: Number(e.target.value) })}
-              />
+            ))}
+            <div className="sm:col-span-2">
+              <label className="label">Summary</label>
+              <textarea className="input min-h-[120px]" value={form.summary ?? ""} onChange={(e) => setForm({ ...form, summary: e.target.value })} placeholder="Two or three sentences on what you do and your best result." />
+              <p className="mt-1 text-right text-[11px] tabular text-muted">{(form.summary || "").split(/\s+/).filter(Boolean).length} words</p>
             </div>
           </div>
-
-          <div>
-            <label className="label">Summary</label>
-            <textarea
-              className="input min-h-[120px] py-2"
-              value={form.summary ?? ""}
-              onChange={(e) => setForm({ ...form, summary: e.target.value })}
-            />
+          <div className="mt-4 flex justify-end gap-2">
+            {dirty && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setForm(data)}>Reset</button>}
+            <button type="button" className="btn btn-primary btn-sm" disabled={!dirty || busy === "save"} onClick={() => save()}>{busy === "save" && <Loader2 className="h-4 w-4 animate-spin" />}Save changes</button>
           </div>
-          <div className="flex items-center gap-3 pt-1">
-            <button type="submit" className="text-action">
-              Save
-            </button>
-            {saved && <span className="text-sm text-success">Saved</span>}
-          </div>
-        </form>
-      </section>
+        </section>
+        <aside className="card h-fit divide-y divide-border overflow-hidden">
+          <RowLink href="/timeline" icon={BriefcaseBusiness} tint="blue" title="Timeline" sub="Roles & education" />
+          <RowLink href="/skills" icon={Sparkles} tint="sky" title="Skills" sub="What you can do" />
+          <RowLink href="/certifications" icon={Award} tint="amber" title="Certifications" sub="Professional credentials" />
+          <RowLink href="/verification" icon={ShieldCheck} tint="emerald" title="Verification" sub={data.claims ? `${data.claims.verified}/${data.claims.total} verified` : "Get verified"} />
+          <RowLink href="/badges" icon={BadgeCheck} tint="violet" title="Badge" sub={data.badge_level === "green" ? "Green badge" : data.badge_level === "gray" ? "Gray badge" : "Not yet"} />
+        </aside>
+      </div>
     </div>
   );
 }

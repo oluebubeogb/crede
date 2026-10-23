@@ -1,225 +1,138 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { api } from "@/lib/api";
-import { TextAction } from "@/components/ui/TextAction";
-import { CircleCheckbox } from "@/components/ui/CircleCheckbox";
-import { IconButton } from "@/components/ui/IconButton";
-import { ChevronDown, ChevronUp, FileText, Heart } from "lucide-react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { BriefcaseBusiness, Check, MapPin, Minus, Search, Sparkles, X } from "lucide-react";
+import { useApi, useDebounced } from "@/lib/hooks";
+import { cn, naira, timeAgo } from "@/lib/utils";
+import { EmptyState, ErrorNote, OrgMark, Sheet, SkeletonList, VerifiedBadge } from "@/components/ui/kit";
+import { MatchBreakdown, MatchScore, type MatchResult } from "@/components/MatchScore";
 
-type Opp = {
-  match_id: number | null;
-  score: number;
-  job: {
-    id: number;
-    title: string;
-    location?: string;
-    salary_min?: number;
-    salary_max?: number;
-    status: string;
-    employment_type?: string;
-    description?: string;
-    organization?: { id?: number; name?: string };
-  };
-  reasons?: string[];
-};
+type Org = { id?: number | null; name?: string | null; logo_url?: string | null; verified?: boolean };
+type Job = { id: number; title: string; location?: string | null; employment_type?: string | null; salary_min?: number | null; salary_max?: number | null; created_at?: string | null; deadline?: string | null; organization?: Org };
+type Opp = { score: number | null; match: MatchResult; job: Job };
+type Req = { id: string; text: string; status: "met" | "partial" | "missing"; priority: string; suggestion?: string };
+type Detail = { job: Job & { description?: string; requirements?: string }; match: MatchResult & { requirements?: Req[] } };
 
 const FILTERS = [
-  { key: "remote", label: "Remote" },
+  { key: "high", label: "Match ≥ 70%" },
+  { key: "remote", label: "Remote / hybrid" },
   { key: "senior", label: "Senior" },
-  { key: "verified_req", label: "Verification preferred" },
-  { key: "high_match", label: "Match ≥ 70%" },
-];
+  { key: "verified", label: "Verified employers" },
+] as const;
+type FKey = (typeof FILTERS)[number]["key"];
+
+const ICON = { met: Check, partial: Minus, missing: X };
+const TONE = { met: "text-success", partial: "text-warning", missing: "text-danger" };
+
+function salary(j: Job) {
+  if (!j.salary_min && !j.salary_max) return null;
+  if (j.salary_min && j.salary_max) return `${naira(j.salary_min)} – ${naira(j.salary_max)}`;
+  return naira(j.salary_min || j.salary_max);
+}
+
+function JobSheet({ id, onClose }: { id: number | null; onClose: () => void }) {
+  const { data, loading } = useApi<Detail>(id ? `/opportunities/${id}/match` : null, [id]);
+  const j = data?.job;
+  return (
+    <Sheet open={id != null} onClose={onClose} title={j?.title || "Role"} wide
+      footer={j && <Link href={`/generate?job=${j.id}`} className="btn btn-primary w-full"><Sparkles className="h-4 w-4" />Tailor my CV for this role</Link>}>
+      {loading || !data ? <SkeletonList n={2} /> : (
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <OrgMark name={j!.organization?.name} src={j!.organization?.logo_url} />
+            <div className="min-w-0 text-sm">
+              <p className="flex items-center gap-1 font-medium">{j!.organization?.name}{j!.organization?.verified && <VerifiedBadge level="issuer_verified" size={14} />}</p>
+              <p className="text-muted">{[j!.location, j!.employment_type?.replace("_", " "), salary(j!)].filter(Boolean).join(" · ")}</p>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border p-4"><MatchBreakdown match={data.match} /></div>
+          {!!data.match.requirements?.length && (
+            <div>
+              <h3 className="section-title mb-2">How you match</h3>
+              <ul className="space-y-2">
+                {data.match.requirements.map((r) => { const I = ICON[r.status]; return (
+                  <li key={r.id} className="flex gap-2.5 text-sm">
+                    <I className={cn("mt-0.5 h-4 w-4 shrink-0", TONE[r.status])} strokeWidth={2.5} />
+                    <span>{r.text}{r.priority === "nice" && <span className="text-muted"> · nice to have</span>}</span>
+                  </li>); })}
+              </ul>
+            </div>
+          )}
+          {j!.description && <div><h3 className="section-title mb-2">About the role</h3><p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{j!.description}</p></div>}
+        </div>
+      )}
+    </Sheet>
+  );
+}
 
 export default function OpportunitiesPage() {
-  const [items, setItems] = useState<Opp[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<Record<string, boolean>>({});
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const [interested, setInterested] = useState<Set<number>>(new Set());
+  const [q, setQ] = useState("");
+  const dq = useDebounced(q, 300);
+  const { data, error, loading, reload } = useApi<Opp[]>(`/opportunities${dq ? `?q=${encodeURIComponent(dq)}` : ""}`, [dq]);
+  const [on, setOn] = useState<Partial<Record<FKey, boolean>>>({});
+  const [open, setOpen] = useState<number | null>(null);
 
-  useEffect(() => {
-    api
-      .get<Opp[]>("/opportunities")
-      .then(setItems)
-      .catch((e) => setError(e.message || "Failed to load"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const filtered = useMemo(() => {
-    return items.filter((item) => {
-      if (filters.high_match && item.score < 70) return false;
-      if (filters.remote) {
-        const loc = (item.job.location || "").toLowerCase();
-        if (!loc.includes("remote") && !loc.includes("hybrid")) return false;
-      }
-      if (filters.senior) {
-        const t = (item.job.title || "").toLowerCase();
-        if (
-          !t.includes("senior") &&
-          !t.includes("lead") &&
-          !t.includes("principal") &&
-          !t.includes("director")
-        )
-          return false;
-      }
-      return true;
-    });
-  }, [items, filters]);
-
-  function toggleFilter(key: string) {
-    setFilters((f) => ({ ...f, [key]: !f[key] }));
-  }
-
-  function markInterested(jobId: number) {
-    setInterested((s) => new Set(s).add(jobId));
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-0">
-        <section className="note-section">
-          <h1 className="page-title">Opportunities</h1>
-          <p className="mt-1.5 text-sm text-muted">Loading matched roles…</p>
-        </section>
-      </div>
-    );
-  }
+  const items = useMemo(() => (data || []).filter(({ job, score }) => {
+    if (on.high && (score ?? 0) < 70) return false;
+    if (on.remote && !/remote|hybrid/i.test(job.location || "")) return false;
+    if (on.senior && !/senior|lead|principal|head|manager/i.test(job.title)) return false;
+    if (on.verified && !job.organization?.verified) return false;
+    return true;
+  }), [data, on]);
+  const anyFilter = Object.values(on).some(Boolean);
 
   return (
-    <div className="space-y-0">
-      <section className="note-section">
-        <h1 className="page-title">Opportunities</h1>
-        <p className="mt-1.5 text-sm text-muted">
-          Personalized open roles based on your verified timeline and skills.
-        </p>
-      </section>
+    <div>
+      <header className="mb-5">
+        <p className="eyebrow mb-1">Opportunities</p>
+        <h1 className="page-title">Roles that fit you</h1>
+        <p className="page-lead">Scored against your timeline, skills and verified claims. Hover or tap a score to see why.</p>
+      </header>
 
-      <section className="note-section">
-        <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">Filters</p>
-        <div className="flex flex-wrap gap-4">
-          {FILTERS.map((f) => (
-            <CircleCheckbox
-              key={f.key}
-              checked={!!filters[f.key]}
-              onChange={() => toggleFilter(f.key)}
-              label={f.label}
-            />
-          ))}
+      <div className="mb-5 space-y-3">
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <input className="input pl-9" placeholder="Search roles" value={q} onChange={(e) => setQ(e.target.value)} />
+        </label>
+        <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1">
+          {FILTERS.map((f) => <button key={f.key} type="button" onClick={() => setOn({ ...on, [f.key]: !on[f.key] })} className={cn("chip shrink-0", on[f.key] && "chip-active")}>{f.label}</button>)}
         </div>
-      </section>
-
-      {error && (
-        <section className="note-section">
-          <p className="text-sm text-danger">{error}</p>
-        </section>
-      )}
-
-      {!error && filtered.length === 0 && (
-        <section className="note-section">
-          <p className="text-sm text-muted">
-            {items.length === 0
-              ? "No matched opportunities yet. Complete your timeline and skills — when recruiters post open roles, matches appear here."
-              : "No opportunities match the current filters."}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-            <TextAction href="/timeline" variant="primary">
-              Complete timeline
-            </TextAction>
-            <span className="text-muted">·</span>
-            <TextAction href="/skills" variant="muted">
-              Add skills
-            </TextAction>
-            {Object.values(filters).some(Boolean) && (
-              <>
-                <span className="text-muted">·</span>
-                <TextAction variant="muted" onClick={() => setFilters({})}>
-                  Clear filters
-                </TextAction>
-              </>
-            )}
-          </div>
-        </section>
-      )}
-
-      <div>
-        {filtered.map((item) => {
-          const isExp = expanded === item.job.id;
-          const isInt = interested.has(item.job.id);
-          return (
-            <article key={`${item.job.id}-${item.match_id ?? "x"}`} className="note-section">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-base font-medium">{item.job.title}</h2>
-                  <p className="mt-0.5 text-sm text-muted">
-                    {item.job.organization?.name || "Organization"}
-                    {item.job.location ? ` · ${item.job.location}` : ""}
-                    {item.job.employment_type ? ` · ${item.job.employment_type}` : ""}
-                  </p>
-                  {(item.job.salary_min || item.job.salary_max) && (
-                    <p className="mt-1 text-xs text-muted">
-                      {item.job.salary_min?.toLocaleString()}
-                      {item.job.salary_max ? ` – ${item.job.salary_max.toLocaleString()}` : "+"}
-                    </p>
-                  )}
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-semibold text-accent">{Math.round(item.score)}%</p>
-                  <p className="text-xs text-muted">match</p>
-                </div>
-              </div>
-
-              {isExp && (
-                <div className="mt-4 space-y-2 border-t border-border pt-4 text-sm">
-                  {item.job.description && (
-                    <p className="line-clamp-6 text-foreground">{item.job.description}</p>
-                  )}
-                  {item.reasons && item.reasons.length > 0 && (
-                    <div>
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">
-                        Why you match
-                      </p>
-                      <ul className="list-inside list-disc space-y-0.5 text-muted">
-                        {item.reasons.map((r, i) => (
-                          <li key={i}>{r}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="mt-4 flex flex-wrap items-center gap-1">
-                <IconButton
-                  label={isExp ? "Hide details" : "View details"}
-                  onClick={() => setExpanded(isExp ? null : item.job.id)}
-                  active={isExp}
-                >
-                  {isExp ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </IconButton>
-                <IconButton
-                  label="Generate tailored materials"
-                  href={`/generate?job=${item.job.id}&title=${encodeURIComponent(item.job.title)}`}
-                >
-                  <FileText className="h-4 w-4" />
-                </IconButton>
-                <IconButton
-                  label={isInt ? "Marked interested" : "Mark interested"}
-                  active={isInt}
-                  onClick={() => markInterested(item.job.id)}
-                >
-                  <Heart className={`h-4 w-4 ${isInt ? "fill-current" : ""}`} />
-                </IconButton>
-              </div>
-            </article>
-          );
-        })}
       </div>
+
+      {error ? <ErrorNote message={error} onRetry={reload} /> : loading && !data ? <SkeletonList n={4} avatar /> : items.length === 0 ? (
+        <EmptyState icon={BriefcaseBusiness} title={data?.length ? "Nothing matches these filters" : "No open roles yet"}
+          body={data?.length ? "Try removing a filter." : "Complete your timeline and skills. When employers post roles, your matches appear here."}
+          action={anyFilter ? <button type="button" className="link text-sm" onClick={() => setOn({})}>Clear filters</button>
+            : <div className="flex gap-4 text-sm"><Link href="/timeline" className="link">Complete timeline</Link><Link href="/skills" className="link">Add skill</Link></div>} />
+      ) : (
+        <ul className="space-y-3">
+          {items.map(({ job, match }) => (
+            <li key={job.id}>
+              <div role="button" tabIndex={0} onClick={() => setOpen(job.id)} onKeyDown={(e) => e.key === "Enter" && setOpen(job.id)}
+                className="card group flex cursor-pointer items-start gap-4 p-4 sm:p-5">
+                <OrgMark name={job.organization?.name} src={job.organization?.logo_url} size={44} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold leading-snug group-hover:underline group-hover:decoration-border-strong group-hover:underline-offset-4">{job.title}</p>
+                  <p className="mt-0.5 flex items-center gap-1 text-sm text-muted">{job.organization?.name}{job.organization?.verified && <VerifiedBadge level="issuer_verified" size={13} />}</p>
+                  <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                    {job.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{job.location}</span>}
+                    {salary(job) && <span>{salary(job)}</span>}
+                    {job.created_at && <span>{timeAgo(job.created_at)}</span>}
+                  </p>
+                  {match.insufficient ? (
+                    <p className="mt-2 text-xs text-muted">Add more to your profile to score this role.</p>
+                  ) : !!match.top_gaps?.length && (
+                    <p className="mt-2 text-xs text-muted">Gap: <span className="text-foreground">{match.top_gaps[0]}</span></p>
+                  )}
+                </div>
+                <div onClick={(e) => e.stopPropagation()}><MatchScore match={match} size={48} /></div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <JobSheet id={open} onClose={() => setOpen(null)} />
     </div>
   );
 }

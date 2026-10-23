@@ -1,722 +1,186 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import { ArrowLeft, Check, ChevronDown, Copy, FileText, Loader2, Mail, Minus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { TextAction } from "@/components/ui/TextAction";
-import {
-  PanelLeft,
-  FileText,
-  ScanSearch,
-  FileType,
-  Download,
-  Trash2,
-  AlertTriangle,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
+import { EmptyState, ErrorNote, RowLink, Skeleton, SoftIcon, Tabs, toast } from "@/components/ui/kit";
+import { MatchBreakdown, MatchScore, type MatchResult } from "@/components/MatchScore";
 
-type Doc = {
-  id: number;
-  title: string;
-  doc_type: string;
-  template: string;
-  created_at: string;
-  status?: string;
-  target_job_title?: string | null;
-  storage_key_pdf?: string | null;
-  storage_key_docx?: string | null;
-  error_message?: string | null;
-};
+type Evidence = { id?: number; label: string; detail?: string; source: string; status?: string; level?: string };
+type Req = { id: string; kind: string; text: string; status: "met" | "partial" | "missing"; priority: "must" | "nice"; evidence: Evidence[]; missing_terms: string[]; suggestion?: string };
+type Analysis = MatchResult & { requirements?: Req[]; gaps?: string[]; strengths?: string[]; years?: number; years_needed?: number; parsed?: { title?: string; seniority?: string } };
+type Doc = { id: number; title: string; doc_type: string; status: string; template: string; created_at: string };
+type History = { id: number; title: string; organization?: string | null; job_description: string; analysis?: Analysis | null; documents: Doc[]; created_at: string };
+type Filter = "all" | "met" | "partial" | "missing";
 
-type HistoryDetail = {
-  id: number;
-  title: string;
-  organization?: string | null;
-  job_description: string;
-  analysis?: {
-    score?: number;
-    strengths?: string[];
-    gaps?: string[];
-  } | null;
-  created_at: string;
-  updated_at: string;
-  documents: Doc[];
-};
+const STATUS = {
+  met: { icon: Check, cls: "text-success", bg: "bg-[color-mix(in_srgb,var(--success)_12%,transparent)]", label: "Met" },
+  partial: { icon: Minus, cls: "text-warning", bg: "bg-[color-mix(in_srgb,var(--warning)_14%,transparent)]", label: "Partial" },
+  missing: { icon: X, cls: "text-danger", bg: "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)]", label: "Missing" },
+} as const;
 
-type Section =
-  | "job_description"
-  | "analysis"
-  | "cv"
-  | "cover_letter"
-  | "downloads"
-  | "danger";
+const SOURCE_HREF: Record<string, string> = { skill: "/skills", timeline: "/timeline", education: "/timeline", certification: "/certifications" };
 
-const SECTIONS: { id: Section; label: string; icon: typeof FileText }[] = [
-  { id: "job_description", label: "Job description", icon: FileText },
-  { id: "analysis", label: "Analysis", icon: ScanSearch },
-  { id: "cv", label: "CV / Resume", icon: FileType },
-  { id: "cover_letter", label: "Cover letter", icon: FileText },
-  { id: "downloads", label: "Downloads", icon: Download },
-  { id: "danger", label: "Danger zone", icon: Trash2 },
-];
-
-const TEMPLATES = [
-  { id: "professional", label: "Professional" },
-  { id: "modern", label: "Modern" },
-  { id: "compact", label: "Compact" },
-];
-
-/** Lightweight JD renderer: headings, bullets, emphasis — without raw # / * noise. */
-function JdRendered({ text }: { text: string }) {
-  const lines = (text || "").split("\n");
-  const blocks: React.ReactNode[] = [];
-  let listItems: string[] = [];
-
-  function flushList(key: string) {
-    if (listItems.length === 0) return;
-    blocks.push(
-      <ul key={key} className="my-2 list-inside list-disc space-y-0.5 text-sm text-foreground">
-        {listItems.map((item, i) => (
-          <li key={i}>{inlineMd(item)}</li>
-        ))}
-      </ul>
-    );
-    listItems = [];
-  }
-
-  function inlineMd(s: string): React.ReactNode {
-    const parts: React.ReactNode[] = [];
-    let rest = s;
-    let k = 0;
-    const re = /(\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__|_(.+?)_)/;
-    while (rest.length) {
-      const m = re.exec(rest);
-      if (!m || m.index === undefined) {
-        parts.push(rest);
-        break;
-      }
-      if (m.index > 0) parts.push(rest.slice(0, m.index));
-      const bold = m[2] || m[4];
-      const ital = m[3] || m[5];
-      if (bold) {
-        parts.push(
-          <strong key={k++} className="font-semibold">
-            {bold}
-          </strong>
-        );
-      } else if (ital) {
-        parts.push(
-          <em key={k++} className="italic">
-            {ital}
-          </em>
-        );
-      }
-      rest = rest.slice(m.index + m[0].length);
-    }
-    return parts.length === 1 ? parts[0] : <>{parts}</>;
-  }
-
-  lines.forEach((raw, idx) => {
-    const line = raw.replace(/\r$/, "");
-    const trimmed = line.trim();
-
-    const isList =
-      /^([*•\-])\s+/.test(trimmed) || /^\d+[\.\)]\s+/.test(trimmed);
-
-    if (isList) {
-      const content = trimmed.replace(/^([*•\-])\s+/, "").replace(/^\d+[\.\)]\s+/, "");
-      listItems.push(content);
-      return;
-    }
-    flushList(`ul-${idx}`);
-
-    if (!trimmed) {
-      blocks.push(<div key={`br-${idx}`} className="h-2" />);
-      return;
-    }
-
-    const h = trimmed.match(/^(#{1,6})\s+(.+)$/);
-    if (h) {
-      const level = h[1].length;
-      const content = h[2].replace(/[#*]+$/, "").trim();
-      const cls =
-        level <= 1
-          ? "mt-3 text-base font-semibold text-foreground"
-          : level === 2
-            ? "mt-2.5 text-sm font-semibold text-foreground"
-            : "mt-2 text-sm font-medium text-foreground";
-      blocks.push(
-        <p key={`h-${idx}`} className={cls}>
-          {inlineMd(content)}
-        </p>
-      );
-      return;
-    }
-
-    if (/^[-*_]{3,}$/.test(trimmed)) {
-      blocks.push(<hr key={`hr-${idx}`} className="my-3 border-border" />);
-      return;
-    }
-
-    blocks.push(
-      <p key={`p-${idx}`} className="text-sm leading-relaxed text-foreground">
-        {inlineMd(trimmed)}
-      </p>
-    );
-  });
-  flushList("ul-end");
-
-  return <div className="space-y-0.5">{blocks}</div>;
+function ReqRow({ r }: { r: Req }) {
+  const [open, setOpen] = useState(r.status !== "met");
+  const s = STATUS[r.status];
+  const Icon = s.icon;
+  return (
+    <li className="border-b border-border last:border-0">
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-start gap-3 py-3 text-left">
+        <span className={cn("mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full", s.bg, s.cls)}><Icon className="h-3.5 w-3.5" strokeWidth={2.5} /></span>
+        <span className="min-w-0 flex-1">
+          <span className="text-sm leading-snug">{r.text}</span>
+          <span className="mt-0.5 flex flex-wrap gap-1.5 text-[11px] text-muted">
+            <span>{r.priority === "must" ? "Must-have" : "Nice to have"}</span>·<span className="capitalize">{r.kind}</span>
+            {r.missing_terms.length > 0 && r.status !== "met" && <>·<span>missing {r.missing_terms.join(", ")}</span></>}
+          </span>
+        </span>
+        <ChevronDown className={cn("mt-1 h-4 w-4 shrink-0 text-muted transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="mb-3 ml-9 space-y-2">
+          {r.evidence.length > 0 ? (
+            <ul className="space-y-1">
+              {r.evidence.map((e, i) => (
+                <li key={i} className="flex items-baseline gap-2 text-sm">
+                  <span className="text-muted">↳</span>
+                  <span><span className="font-medium">{e.label}</span>{e.detail && <span className="text-muted"> — {e.detail}</span>}
+                    {e.level && e.level !== "self" && <span className="pill pill-green ml-1.5">verified</span>}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-sm text-muted">Nothing in your profile backs this yet.</p>}
+          {r.suggestion && (
+            <div className="rounded-xl bg-surface-2 p-3">
+              <p className="eyebrow mb-1">Suggested bullet</p>
+              <p className="text-sm">{r.suggestion}</p>
+              <div className="mt-2 flex gap-3 text-xs">
+                <button type="button" className="link" onClick={() => navigator.clipboard?.writeText(r.suggestion!).then(() => toast("Copied"))}><Copy className="mr-1 inline h-3 w-3" />Copy</button>
+                <Link className="link" href={r.kind === "skill" ? "/skills" : "/timeline"}>{r.kind === "skill" ? "Add skill" : "Add to timeline"}</Link>
+              </div>
+            </div>
+          )}
+          {!r.suggestion && r.status !== "met" && SOURCE_HREF[r.kind === "skill" ? "skill" : "timeline"] && (
+            <Link className="link text-xs" href={r.kind === "skill" ? "/skills" : r.kind === "education" ? "/timeline" : "/timeline"}>Update your profile</Link>
+          )}
+        </div>
+      )}
+    </li>
+  );
 }
 
 export default function HistoryDetailPage() {
-  const params = useParams();
+  const { id: raw } = useParams<{ id: string }>();
+  const id = Number(raw);
   const router = useRouter();
-  const id = Number(params.id);
-  const [data, setData] = useState<HistoryDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<History | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [active, setActive] = useState<Section>("analysis");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
-  const [generating, setGenerating] = useState<"cv" | "cover_letter" | "analysis" | null>(null);
-  const [genStatus, setGenStatus] = useState<string | null>(null);
-  const [template, setTemplate] = useState("professional");
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [showJd, setShowJd] = useState(false);
+  const alive = useRef(true);
 
-  const load = useCallback(() => {
-    if (!id || Number.isNaN(id)) return;
-    setLoading(true);
-    setError(null);
-    api
-      .get<HistoryDetail>(`/history/${id}`)
-      .then((d) => {
-        setData(d);
-      })
-      .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : "Failed to load history");
-      })
-      .finally(() => setLoading(false));
-  }, [id]);
+  const load = useCallback(() => api.get<History>(`/history/${id}`).then(setData).catch((e) => setError(e.message)), [id]);
+  useEffect(() => { alive.current = true; load(); return () => { alive.current = false; }; }, [load]);
 
-  useEffect(() => {
-    load();
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [load]);
-
-  const cvDoc = data?.documents.find((d) => d.doc_type === "cv");
-  const clDoc = data?.documents.find((d) => d.doc_type === "cover_letter");
-
-  async function pollUntilReady(docId: number) {
-    const maxAttempts = 60;
-    let attempts = 0;
-    return new Promise<void>((resolve, reject) => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(async () => {
-        attempts += 1;
-        try {
-          const d = await api.get<Doc>(`/documents/${docId}`);
-          setGenStatus(d.status || "processing");
-          if (d.status === "ready" || d.status === "failed") {
-            if (pollRef.current) clearInterval(pollRef.current);
-            pollRef.current = null;
-            if (d.status === "failed") {
-              reject(new Error(d.error_message || "Something went wrong while generating. You can try again from this page."));
-            } else {
-              resolve();
-            }
-          } else if (attempts >= maxAttempts) {
-            if (pollRef.current) clearInterval(pollRef.current);
-            pollRef.current = null;
-            reject(new Error("Still working on your file — it should appear here in a moment. You can refresh this page."));
-          }
-        } catch (e) {
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-          reject(e instanceof Error ? e : new Error("Poll failed"));
-        }
-      }, 2000);
-    });
+  async function reanalyze() {
+    setBusy("analysis");
+    try { setData(await api.post<History>(`/history/${id}/analyze`)); toast("Analysis refreshed"); }
+    catch (e) { toast(e instanceof Error ? e.message : "Failed", "error"); } finally { setBusy(null); }
   }
-
-  async function generateDoc(docType: "cv" | "cover_letter") {
+  async function generate(doc_type: "cv" | "cover_letter") {
     if (!data) return;
-    setGenerating(docType);
-    setGenStatus("starting…");
-    setError(null);
+    setBusy(doc_type);
     try {
-      const res = await api.post<{
-        document_id: number;
-        status: string;
-        history_id?: number;
-      }>("/generate", {
-        history_id: data.id,
-        job_description: data.job_description,
-        doc_type: docType,
-        template,
-      });
-      setGenStatus(res.status || "pending");
-      await pollUntilReady(res.document_id);
-      load();
-      setActive(docType === "cv" ? "cv" : "cover_letter");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Taking longer than usual — refresh in a moment to see your file.");
-    } finally {
-      setGenerating(null);
-      setGenStatus(null);
-    }
+      const r = await api.post<{ document_id: number }>("/generate", { history_id: id, job_description: data.job_description, doc_type, template: "modern" });
+      router.push(`/documents/${r.document_id}`);
+    } catch (e) { toast(e instanceof Error ? e.message : "Couldn't start", "error"); setBusy(null); }
+  }
+  async function remove() {
+    if (!confirm("Delete this job and its documents? Download anything you need first.")) return;
+    try { await api.delete(`/history/${id}`); router.replace("/history"); } catch (e) { toast(e instanceof Error ? e.message : "Failed", "error"); }
   }
 
-  async function runAnalysis() {
-    if (!data) return;
-    setGenerating("analysis");
-    setError(null);
-    try {
-      const updated = await api.post<HistoryDetail>(`/history/${data.id}/analyze`);
-      setData(updated);
-      setActive("analysis");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Analysis failed");
-    } finally {
-      setGenerating(null);
-    }
-  }
+  if (error) return <ErrorNote message={error} />;
+  if (!data) return <div className="space-y-4"><Skeleton className="h-8 w-64" /><Skeleton className="h-40 w-full" /><Skeleton className="h-64 w-full" /></div>;
 
-  async function handleDelete() {
-    if (!data) return;
-    setDeleting(true);
-    setDeleteMsg("Preparing downloads…");
-    try {
-      const toDownload: { url: string; name: string }[] = [];
-      for (const doc of data.documents) {
-        if (doc.storage_key_pdf) {
-          toDownload.push({
-            url: `/backend/api/documents/${doc.id}/download.pdf`,
-            name: `${doc.title || doc.doc_type}.pdf`,
-          });
-        }
-        if (doc.storage_key_docx) {
-          toDownload.push({
-            url: `/backend/api/documents/${doc.id}/download.docx`,
-            name: `${doc.title || doc.doc_type}.docx`,
-          });
-        }
-      }
-      for (const f of toDownload) {
-        setDeleteMsg(`Downloading ${f.name}…`);
-        const a = document.createElement("a");
-        a.href = f.url;
-        a.download = f.name;
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        await new Promise((r) => setTimeout(r, 400));
-      }
-      setDeleteMsg("Deleting history and associated files…");
-      await api.delete(`/history/${data.id}`);
-      setDeleteMsg("Deleted. Redirecting…");
-      setTimeout(() => router.push("/history"), 600);
-    } catch (e: unknown) {
-      setDeleteMsg(null);
-      setError(e instanceof Error ? e.message : "Delete failed");
-      setConfirmDelete(false);
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="note-section py-8 text-sm text-muted">Loading history…</div>
-    );
-  }
-
-  if (error && !data) {
-    return (
-      <div className="space-y-0">
-        <section className="note-section">
-          <h1 className="page-title">History</h1>
-          <p className="mt-2 text-sm text-danger">{error}</p>
-          <TextAction href="/history" variant="muted" className="mt-3">
-            Back to history
-          </TextAction>
-        </section>
-      </div>
-    );
-  }
-
-  if (!data) return null;
-
-  function DocActions({ doc }: { doc: Doc }) {
-    return (
-      <>
-        <p className="text-sm font-medium">{doc.title}</p>
-        <p className="text-xs capitalize text-muted">
-          Status: {doc.status || "ready"} · Template: {doc.template}
-        </p>
-        {(doc.status === "ready" || !doc.status) && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-            <TextAction href={`/documents/${doc.id}`} variant="primary">
-              Open document
-            </TextAction>
-            <span className="text-muted">·</span>
-            <TextAction href={`/backend/api/documents/${doc.id}/download.pdf`} variant="muted">
-              Download PDF
-            </TextAction>
-            <span className="text-muted">·</span>
-            <TextAction href={`/backend/api/documents/${doc.id}/download.docx`} variant="muted">
-              Download DOCX
-            </TextAction>
-          </div>
-        )}
-        {doc.status === "failed" && (
-          <p className="text-sm text-danger">{doc.error_message || "Could not finish this file. Try generating again."}</p>
-        )}
-        {(doc.status === "pending" || doc.status === "processing") && (
-          <p className="text-sm text-muted">Still generating… refresh in a moment.</p>
-        )}
-      </>
-    );
-  }
-
-  function GenerateControls({ docType }: { docType: "cv" | "cover_letter" }) {
-    const busy = generating === docType;
-    const label = docType === "cv" ? "CV" : "cover letter";
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-muted">
-          No {label} linked to this job description yet.
-        </p>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
-          <label className="text-xs text-muted" htmlFor={`tpl-${docType}`}>
-            Template
-          </label>
-          <select
-            id={`tpl-${docType}`}
-            className="input w-auto min-w-[140px] py-1 text-sm"
-            value={template}
-            disabled={!!generating}
-            onChange={(e) => setTemplate(e.target.value)}
-          >
-            {TEMPLATES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-          <span className="text-muted">·</span>
-          {busy ? (
-            <span className="text-sm text-muted">
-              Generating your {label}… this can take a moment. It will show up here when ready.
-            </span>
-          ) : (
-            <button
-              type="button"
-              disabled={!!generating}
-              onClick={() => generateDoc(docType)}
-              className="text-sm font-medium text-accent transition hover:underline disabled:opacity-50"
-            >
-              Generate {label}
-            </button>
-          )}
-        </div>
-        {busy && genStatus && genStatus !== "starting…" && (
-          <p className="text-xs text-muted">
-            Still preparing your file ({genStatus}). Almost there.
-          </p>
-        )}
-      </div>
-    );
-  }
+  const a = data.analysis;
+  const reqs = a?.requirements || [];
+  const shown = filter === "all" ? reqs : reqs.filter((r) => r.status === filter);
+  const counts = { met: reqs.filter((r) => r.status === "met").length, partial: reqs.filter((r) => r.status === "partial").length, missing: reqs.filter((r) => r.status === "missing").length };
 
   return (
-    <div className="space-y-0">
-      <section className="note-section flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div>
+      <Link href="/history" className="link-muted mb-3 inline-flex items-center gap-1 text-sm"><ArrowLeft className="h-4 w-4" />Applications</Link>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="page-title">{data.title}</h1>
-          <p className="page-lead">
-            {data.organization ? `${data.organization} · ` : ""}
-            Saved {new Date(data.created_at).toLocaleDateString()}
-          </p>
+          <p className="page-lead">{data.organization || "Organisation not detected"} · added {timeAgo(data.created_at)}</p>
         </div>
-        <TextAction href="/history" variant="muted">
-          ← All history
-        </TextAction>
-      </section>
+        <div className="flex items-center gap-1">
+          <button type="button" className="btn btn-soft btn-sm" onClick={reanalyze} disabled={!!busy}>{busy === "analysis" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Re-check</button>
+          <button type="button" className="btn btn-ghost btn-sm text-danger" onClick={remove} aria-label="Delete"><Trash2 className="h-4 w-4" /></button>
+        </div>
+      </div>
 
-      {error && (
-        <section className="note-section">
-          <p className="text-sm text-danger">{error}</p>
-        </section>
-      )}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-6">
+          <section className="card p-5">
+            <div className="flex items-center gap-4">
+              <MatchScore match={a} size={64} align="left" />
+              <div className="min-w-0">
+                <p className="font-semibold">{a?.insufficient ? "Not enough profile data yet" : a?.label || "Match"}</p>
+                <p className="text-sm text-muted">{counts.met} met · {counts.partial} partial · {counts.missing} missing{a?.years != null && a?.years_needed ? ` · ${a.years} yrs vs ${a.years_needed}+ needed` : ""}</p>
+              </div>
+            </div>
+            {a && <div className="mt-4"><MatchBreakdown match={a} compact /></div>}
+          </section>
 
-      <div className="flex min-h-[60vh] border-b border-border">
-        <aside
-          className={cn(
-            "shrink-0 border-r border-border transition-all duration-300 ease-in-out",
-            sidebarCollapsed ? "w-12" : "w-[30%] min-w-[200px] max-w-[320px]"
-          )}
-        >
-          <div className="flex items-center justify-between border-b border-border px-2 py-2">
-            {!sidebarCollapsed && (
-              <span className="px-2 text-xs font-semibold uppercase tracking-wider text-muted">
-                Sections
-              </span>
-            )}
-            <button
-              type="button"
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              onClick={() => setSidebarCollapsed((c) => !c)}
-              className="flex h-8 w-8 items-center justify-center rounded-card text-muted transition hover:bg-border/50 hover:text-foreground"
-            >
-              <PanelLeft className="h-4 w-4" />
+          <section className="card p-5">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="section-title">Requirements</h2>
+              <Tabs value={filter} onChange={setFilter} items={[{ value: "all", label: "All", count: reqs.length }, { value: "met", label: "Met", count: counts.met }, { value: "partial", label: "Partial", count: counts.partial }, { value: "missing", label: "Missing", count: counts.missing }]} />
+            </div>
+            {reqs.length === 0 ? <EmptyState icon={Sparkles} title="No requirements found" body="We couldn't pick out requirements from this description. Try Re-check, or paste a fuller job description." />
+              : shown.length === 0 ? <p className="py-6 text-center text-sm text-muted">Nothing here.</p>
+                : <ul>{shown.map((r) => <ReqRow key={r.id + filter} r={r} />)}</ul>}
+          </section>
+
+          <section className="card p-5">
+            <button type="button" className="flex w-full items-center justify-between" onClick={() => setShowJd(!showJd)}>
+              <h2 className="section-title">Job description</h2><ChevronDown className={cn("h-4 w-4 text-muted transition-transform", showJd && "rotate-180")} />
             </button>
-          </div>
-          <nav className="py-1">
-            {SECTIONS.map((s) => {
-              const Icon = s.icon;
-              const isActive = active === s.id;
-              const isDanger = s.id === "danger";
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setActive(s.id)}
-                  title={s.label}
-                  className={cn(
-                    "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition",
-                    isActive
-                      ? isDanger
-                        ? "bg-danger/10 text-danger"
-                        : "bg-accent/10 text-accent"
-                      : isDanger
-                        ? "text-muted hover:bg-danger/5 hover:text-danger"
-                        : "text-muted hover:bg-border/40 hover:text-foreground",
-                    sidebarCollapsed && "justify-center px-0"
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {!sidebarCollapsed && <span className="truncate">{s.label}</span>}
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
-
-        <div className="min-w-0 flex-1 px-4 py-5 sm:px-6">
-          {active === "job_description" && (
-            <div className="space-y-3">
-              <h2 className="text-sm font-medium">Job description</h2>
-              <div className="rounded-card border border-border bg-background p-4">
-                <JdRendered text={data.job_description} />
-              </div>
-              <details className="text-xs text-muted">
-                <summary className="cursor-pointer hover:text-foreground">View raw text</summary>
-                <textarea
-                  className="input mt-2 min-h-[160px] py-3 font-mono text-sm"
-                  readOnly
-                  value={data.job_description}
-                />
-              </details>
-              <p className="text-xs text-muted">
-                Exact content that was processed. Headings and bullets are cleaned for display;
-                raw text is available above if you need to copy it into{" "}
-                <Link href="/generate" className="text-accent hover:underline">
-                  Generate Files
-                </Link>
-                .
-              </p>
-            </div>
-          )}
-
-          {active === "analysis" && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-medium">Match analysis</h2>
-                {data.analysis?.score != null && (
-                  <p className="text-base font-semibold text-accent">{data.analysis.score}%</p>
-                )}
-              </div>
-              {!data.analysis && (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted">No analysis was saved for this session.</p>
-                  {generating === "analysis" ? (
-                    <p className="text-sm text-muted">
-                      Running analysis… results will appear here in a moment.
-                    </p>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={runAnalysis}
-                      className="text-sm font-medium text-accent transition hover:underline"
-                    >
-                      Run analysis
-                    </button>
-                  )}
-                </div>
-              )}
-              {data.analysis?.strengths && data.analysis.strengths.length > 0 && (
-                <div>
-                  <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">
-                    Strengths
-                  </p>
-                  <ul className="list-inside list-disc space-y-0.5 text-sm">
-                    {data.analysis.strengths.map((s, i) => (
-                      <li key={i}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {data.analysis?.gaps && data.analysis.gaps.length > 0 && (
-                <div>
-                  <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">
-                    Suggested edits
-                  </p>
-                  <ul className="list-inside list-disc space-y-0.5 text-sm text-muted">
-                    {data.analysis.gaps.map((g, i) => (
-                      <li key={i}>{g}</li>
-                    ))}
-                  </ul>
-                  <TextAction href="/timeline" variant="muted" className="mt-2">
-                    Edit timeline to close gaps
-                  </TextAction>
-                </div>
-              )}
-              {data.analysis && (
-                <button
-                  type="button"
-                  disabled={generating === "analysis"}
-                  onClick={runAnalysis}
-                  className="text-xs text-muted hover:text-foreground"
-                >
-                  {generating === "analysis" ? "Re-analyzing…" : "Re-run analysis"}
-                </button>
-              )}
-            </div>
-          )}
-
-          {active === "cv" && (
-            <div className="space-y-3">
-              <h2 className="text-sm font-medium">CV / Resume</h2>
-              {!cvDoc && <GenerateControls docType="cv" />}
-              {cvDoc && <DocActions doc={cvDoc} />}
-            </div>
-          )}
-
-          {active === "cover_letter" && (
-            <div className="space-y-3">
-              <h2 className="text-sm font-medium">Cover letter</h2>
-              {!clDoc && <GenerateControls docType="cover_letter" />}
-              {clDoc && <DocActions doc={clDoc} />}
-            </div>
-          )}
-
-          {active === "downloads" && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-medium">Downloads</h2>
-              {data.documents.length === 0 && (
-                <p className="text-sm text-muted">No generated files available for download.</p>
-              )}
-              {data.documents.map((doc) => (
-                <div key={doc.id} className="rounded-card border border-border p-3">
-                  <p className="text-sm font-medium">{doc.title}</p>
-                  <p className="text-xs capitalize text-muted">
-                    {doc.doc_type.replace("_", " ")} · {doc.template}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm">
-                    {doc.storage_key_pdf ? (
-                      <TextAction
-                        href={`/backend/api/documents/${doc.id}/download.pdf`}
-                        variant="primary"
-                      >
-                        PDF
-                      </TextAction>
-                    ) : (
-                      <span className="text-xs text-muted">PDF not ready</span>
-                    )}
-                    {doc.storage_key_docx ? (
-                      <TextAction
-                        href={`/backend/api/documents/${doc.id}/download.docx`}
-                        variant="muted"
-                      >
-                        DOCX
-                      </TextAction>
-                    ) : (
-                      <span className="text-xs text-muted">DOCX not ready</span>
-                    )}
-                    <TextAction href={`/documents/${doc.id}`} variant="muted">
-                      Open
-                    </TextAction>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {active === "danger" && (
-            <div className="space-y-4">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
-                <div>
-                  <h2 className="text-sm font-medium text-danger">Danger zone</h2>
-                  <p className="mt-1 text-sm text-muted">
-                    Delete this history entry and all associated generated files (CV, cover letter,
-                    PDFs, DOCX). Before deleting, available files will be downloaded automatically
-                    so you don&apos;t lose them.
-                  </p>
-                </div>
-              </div>
-
-              {!confirmDelete ? (
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(true)}
-                  className="rounded-card border border-danger/40 bg-danger/10 px-4 py-2 text-sm font-medium text-danger transition hover:bg-danger/20"
-                >
-                  Delete this history…
-                </button>
-              ) : (
-                <div className="space-y-3 rounded-card border border-danger/30 bg-danger/5 p-4">
-                  <p className="text-sm font-medium text-danger">
-                    Are you sure? This cannot be undone.
-                  </p>
-                  <p className="text-xs text-muted">
-                    We will first trigger downloads for any available PDF/DOCX files, then permanently
-                    remove the history and linked documents.
-                  </p>
-                  {deleteMsg && <p className="text-sm text-muted">{deleteMsg}</p>}
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={deleting}
-                      onClick={handleDelete}
-                      className="rounded-card bg-danger px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-                    >
-                      {deleting ? "Working…" : "Yes, download then delete"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={deleting}
-                      onClick={() => {
-                        setConfirmDelete(false);
-                        setDeleteMsg(null);
-                      }}
-                      className="rounded-card border border-border px-4 py-2 text-sm text-muted transition hover:bg-border/40"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+            {showJd && <pre className="mt-3 whitespace-pre-wrap font-sans text-sm leading-relaxed text-muted">{data.job_description}</pre>}
+          </section>
         </div>
+
+        <aside className="space-y-6">
+          <section className="card p-5">
+            <h2 className="section-title mb-3">Tailored documents</h2>
+            {data.documents.length > 0 && (
+              <div className="-mx-2 mb-3">
+                {data.documents.map((d) => (
+                  <RowLink key={d.id} href={`/documents/${d.id}`} icon={d.doc_type === "cv" ? FileText : Mail} tint={d.doc_type === "cv" ? "blue" : "violet"}
+                    title={d.title} sub={`${d.status === "ready" ? d.template : d.status} · ${timeAgo(d.created_at)}`} />
+                ))}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => generate("cv")}>{busy === "cv" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}New CV</button>
+              <button type="button" className="btn btn-soft btn-sm" disabled={!!busy} onClick={() => generate("cover_letter")}>{busy === "cover_letter" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}Cover letter</button>
+            </div>
+          </section>
+          {!!a?.strengths?.length && (
+            <section className="card p-5">
+              <div className="mb-2 flex items-center gap-2"><SoftIcon icon={Check} tint="emerald" size="sm" /><h2 className="section-title">Lead with these</h2></div>
+              <ul className="space-y-1.5 text-sm text-muted">{a.strengths.slice(0, 5).map((s) => <li key={s}>{s}</li>)}</ul>
+            </section>
+          )}
+        </aside>
       </div>
     </div>
   );

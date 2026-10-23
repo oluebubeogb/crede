@@ -1,87 +1,59 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useState } from "react";
 import Link from "next/link";
-import { TextAction } from "@/components/ui/TextAction";
+import { useParams } from "next/navigation";
+import { ChevronDown, Loader2, RefreshCw, UsersRound } from "lucide-react";
 import { api } from "@/lib/api";
-import { ShieldCheck } from "lucide-react";
+import { useApi } from "@/lib/hooks";
+import { cn } from "@/lib/utils";
+import { Avatar, EmptyState, ErrorNote, PageHeader, SkeletonList, VerifiedBadge, toast } from "@/components/ui/kit";
+import { MatchBreakdown, MatchScore, type MatchResult } from "@/components/MatchScore";
+import type { Candidate, Job } from "@/components/recruiter";
 
-type Match = {
-  id: number;
-  overall_score: number;
-  experience_score: number;
-  skill_score: number;
-  verification_bonus: number;
-  profile?: {
-    id: number;
-    full_name?: string;
-    headline?: string;
-    verification_score: number;
-    username?: string;
-  };
-};
+type M = { id: number; overall_score?: number | null; match?: MatchResult | null; status: string; profile?: Candidate | null };
 
-export default function JobMatchesPage() {
-  const params = useParams();
-  const jobId = params.id as string;
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api<Match[]>(`/api/candidates/jobs/${jobId}/matches`)
-      .then(setMatches)
-      .catch(() => setMatches([]))
-      .finally(() => setLoading(false));
-  }, [jobId]);
-
+export default function MatchesPage() {
+  const { id } = useParams<{ id: string }>();
+  const { data: job } = useApi<Job>(`/jobs/${id}`, [id]);
+  const { data, error, loading, reload, setData } = useApi<M[]>(`/candidates/jobs/${id}/matches`, [id]);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState<number | null>(null);
+  async function run() {
+    setBusy(true);
+    try { setData(await api.post<M[]>(`/candidates/jobs/${id}/matches`)); toast("Candidates ranked"); } catch (e) { toast(e instanceof Error ? e.message : "Failed", "error"); } finally { setBusy(false); }
+  }
+  const rows = [...(data || [])].sort((a, b) => (b.overall_score ?? -1) - (a.overall_score ?? -1));
   return (
-    <div className="mx-auto max-w-content space-y-6 p-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Top matches</h1>
-          <p className="mt-1 text-muted">Ranked by experience, skills, location & verification.</p>
-        </div>
-        <Link href="/recruiter/jobs" className="text-sm text-accent hover:underline">
-          ← Jobs
-        </Link>
-      </div>
-
-      {loading ? (
-        <p className="text-muted">Loading…</p>
-      ) : matches.length === 0 ? (
-        <div className="card text-center text-muted">
-          No matches yet. Run matching from the Jobs page.
-        </div>
+    <div className="mx-auto max-w-3xl">
+      <Link href="/recruiter/jobs" className="link-muted text-sm">← Jobs</Link>
+      <PageHeader eyebrow="Matches" title={job?.title || "Candidates"} lead="Ranked with the same engine candidates see — open a row for the breakdown."
+        action={<button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={run}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{rows.length ? "Re-rank" : "Find candidates"}</button>} />
+      {error ? <ErrorNote message={error} onRetry={reload} /> : loading && !data ? <SkeletonList n={4} avatar /> : !rows.length ? (
+        <EmptyState icon={UsersRound} title="No ranked candidates yet" body="Run matching to score public Crede profiles against this job's requirements." />
       ) : (
-        <div className="space-y-3">
-          {matches.map((m) => (
-            <div key={m.id} className="card flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="font-medium">{m.profile?.full_name || `Profile #${m.profile?.id ?? m.id}`}</p>
-                <p className="text-sm text-muted">{m.profile?.headline}</p>
-                <p className="mt-1 text-xs text-muted">
-                  Exp {m.experience_score}% · Skills {m.skill_score}% · Ver bonus {m.verification_bonus}
-                </p>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <p className="text-2xl font-semibold text-accent">{m.overall_score}%</p>
-                  <p className="text-xs text-muted">match</p>
+        <ul className="card divide-y divide-border overflow-hidden">
+          {rows.map((m) => (
+            <li key={m.id}>
+              <button type="button" onClick={() => setOpen(open === m.id ? null : m.id)} className="nav-hover flex w-full items-center gap-3 p-4 text-left">
+                <Avatar name={m.profile?.full_name} src={m.profile?.avatar_url} size={40} />
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1 font-medium">{m.profile?.full_name || "Candidate"}<VerifiedBadge level={m.profile?.badge_level} /></p>
+                  <p className="line-clamp-1 text-sm text-muted">{[m.profile?.headline, m.profile?.location].filter(Boolean).join(" · ")}</p>
                 </div>
-                <div className="flex items-center gap-1 text-sm">
-                  <ShieldCheck className="h-4 w-4 text-success" />
-                  {m.profile?.verification_score ?? "—"}
+                <MatchScore match={m.match} size={44} />
+                <ChevronDown className={cn("h-4 w-4 text-muted transition-transform", open === m.id && "rotate-180")} />
+              </button>
+              {open === m.id && (
+                <div className="px-4 pb-4">
+                  {m.match && <MatchBreakdown match={m.match} compact />}
+                  {m.profile?.claims?.label && <p className="mt-3 text-xs text-muted">{m.profile.claims.label}</p>}
+                  {m.profile?.username && <Link href={`/u/${m.profile.username}`} className="link mt-2 inline-block text-sm">View profile</Link>}
                 </div>
-                {m.profile?.username && (
-                  <Link href={`/u/${m.profile.username}`} className="text-sm text-muted hover:text-foreground underline-offset-4 hover:underline">
-                    Profile
-                  </Link>
-                )}
-              </div>
-            </div>
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );

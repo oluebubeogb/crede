@@ -1,219 +1,232 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
+import { useRef, useState } from "react";
+import {
+  ShieldCheck, BadgeCheck, Briefcase, GraduationCap, Award, Upload, FileCheck2, Send, Clock, CheckCircle2, XCircle, CircleDashed, IdCard, Loader2, ChevronRight, X,
+} from "lucide-react";
 import { api } from "@/lib/api";
-import { TextAction } from "@/components/ui/TextAction";
-import { CircleCheckbox } from "@/components/ui/CircleCheckbox";
+import { useApi } from "@/lib/hooks";
+import { useMe } from "@/lib/me";
+import { cn, fmtMonth } from "@/lib/utils";
+import { ErrorNote, PageHeader, Sheet, SkeletonList, SoftIcon, toast, type Tint } from "@/components/ui/kit";
+import { OrgPicker } from "@/components/orgs";
 
-type VItem = {
-  id: number;
-  kind: string;
-  status: string;
-  document_key?: string | null;
-  notes?: string | null;
-  points: number;
+type Level = "issuer_verified" | "verified" | "document_provided" | "pending" | "self_reported" | "rejected";
+type Claim = {
+  subject_type: "timeline" | "certification"; subject_id: number; claim_type: string; title: string; subtitle?: string | null;
+  organization_id?: number | null; start?: string | null; end?: string | null; is_current?: boolean; has_document: boolean; level: Level;
+  request?: { request_id: number; status: string; note?: string | null; org?: { id: number; name: string; claim_status: string } | null } | null;
+};
+type Summary = { total: number; verified: number; issuer_verified: number; document_provided: number; pending: number; self_reported: number; rejected: number; identity_verified: boolean; label: string; ratio: number };
+type Elig = { eligible: boolean; missing: string[] };
+type Overview = {
+  summary: Summary; claims: Claim[]; identity: { verified: boolean; status: string; notes?: string | null; has_document: boolean };
+  badge: { level: string; granted_at?: string | null; eligibility: { gray: Elig; green: Elig; current: string }; last_request?: { id: number; level: string; status: string; created_at: string } | null };
 };
 
-const LABELS: Record<string, string> = {
-  email: "Email verified",
-  phone: "Phone verification",
-  degree: "Degree verification",
-  certification: "Certification",
-  employment: "Employment verification",
-  organization: "Organization",
+const LEVEL: Record<Level, { label: string; pill: string; icon: typeof CheckCircle2 }> = {
+  issuer_verified: { label: "Verified by issuer", pill: "pill-green", icon: CheckCircle2 },
+  verified: { label: "Verified", pill: "pill-green", icon: CheckCircle2 },
+  document_provided: { label: "Document provided", pill: "pill-blue", icon: FileCheck2 },
+  pending: { label: "Awaiting issuer", pill: "pill-amber", icon: Clock },
+  self_reported: { label: "Self-reported", pill: "pill-gray", icon: CircleDashed },
+  rejected: { label: "Declined", pill: "pill-red", icon: XCircle },
+};
+const KIND: Record<string, { icon: typeof Briefcase; tint: Tint; org: "company" | "school" | "issuer" }> = {
+  employment: { icon: Briefcase, tint: "blue", org: "company" },
+  education: { icon: GraduationCap, tint: "violet", org: "school" },
+  certification: { icon: Award, tint: "amber", org: "issuer" },
 };
 
-const ACTIONS: Record<string, string> = {
-  email: "Email is verified via account",
-  phone: "Verify phone",
-  degree: "Upload proof",
-  certification: "Add certification",
-  employment: "Upload proof or request employer confirmation",
-  organization: "Request organization confirmation",
-};
-
-export default function VerificationPage() {
-  const [items, setItems] = useState<VItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState<string | null>(null);
-  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  const score = items
-    .filter((i) => i.status === "approved")
-    .reduce((s, i) => s + (i.points || 0), 0);
-
-  const load = () =>
-    api
-      .get<VItem[]>("/verification")
-      .then(setItems)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function handleUpload(kind: string, file: File) {
-    setUploading(kind);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      await api.postForm(`/verification/${kind}/upload`, fd);
-      await load();
-    } catch (e) {
-      console.error(e);
-      alert("Upload failed");
-    } finally {
-      setUploading(null);
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <h1 className="page-title">Verification</h1>
-        <p className="text-sm text-muted">Loading…</p>
-      </div>
-    );
-  }
-
+function Ring({ value, size = 76 }: { value: number; size?: number }) {
+  const r = size / 2 - 6, c = 2 * Math.PI * r;
   return (
-    <div className="space-y-8 max-w-3xl">
-      <header>
-        <h1 className="page-title">Verification</h1>
-        <p className="mt-1 text-sm text-muted">
-          Trust is visible. Verify claims on your timeline and credentials to raise your score.
-        </p>
-      </header>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0 -rotate-90">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--surface-2)" strokeWidth={7} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--success)" strokeWidth={7} strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={c * (1 - value)} className="chart-line" style={{ transition: "stroke-dashoffset .8s ease" }} />
+    </svg>
+  );
+}
 
-      {/* Large score */}
-      <div className="card flex flex-wrap items-center gap-6">
-        <div className="relative h-28 w-28 shrink-0">
-          <svg className="h-28 w-28 -rotate-90" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="42" fill="none" stroke="var(--border)" strokeWidth="8" />
-            <circle
-              cx="50"
-              cy="50"
-              r="42"
-              fill="none"
-              stroke="var(--accent)"
-              strokeWidth="8"
-              strokeLinecap="round"
-              strokeDasharray={`${Math.min(score, 100) / 100 * 264} 264`}
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-bold">{score}</span>
-            <span className="text-xs text-muted">/ 100</span>
+function RequestSheet({ claim, onClose, onDone }: { claim: Claim | null; onClose: () => void; onDone: () => void }) {
+  const [org, setOrg] = useState<{ id: number | null; name: string; claim_status?: string }>({ id: null, name: "" });
+  const [busy, setBusy] = useState(false);
+  const kind = KIND[claim?.claim_type || "employment"] || KIND.employment!;
+  async function send() {
+    if (!claim) return;
+    setBusy(true);
+    try {
+      let id = org.id;
+      if (!id && org.name.trim().length > 1) {
+        const o = await api.post<{ id: number }>("/organizations", { name: org.name.trim(), org_type: kind.org });
+        id = o.id;
+      }
+      if (!id) return;
+      const r = await api.post<{ message: string }>("/verification/request", { subject_type: claim.subject_type, subject_id: claim.subject_id, organization_id: id });
+      toast(r.message);
+      onDone();
+      onClose();
+    } catch (e) { toast(e instanceof Error ? e.message : "Failed", "error"); } finally { setBusy(false); }
+  }
+  return (
+    <Sheet open={!!claim} onClose={onClose} title="Request verification" footer={
+      <button type="button" className="btn btn-primary w-full" disabled={busy || org.name.trim().length < 2} onClick={send}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Send request</button>
+    }>
+      {claim && (
+        <div className="space-y-3">
+          <div className="rounded-xl bg-surface-2 p-3 text-sm"><p className="font-medium">{claim.title}</p><p className="text-muted">{claim.subtitle}</p></div>
+          <div>
+            <label className="label">{kind.org === "school" ? "School" : kind.org === "issuer" ? "Issuing organisation" : "Employer"}</label>
+            <OrgPicker type={kind.org} value={claim.subtitle || ""} onPick={setOrg} placeholder="Start typing…" />
           </div>
-        </div>
-        <div>
-          <p className="font-medium">Verification Score</p>
-          <p className="mt-1 text-sm text-muted max-w-md">
-            Upload proof for employment, degree, or certifications. Reviews are handled carefully so every approved claim increases trust.
+          <p className="text-xs text-muted">
+            {org.id && org.claim_status === "approved" ? "This organisation is claimed on Crede, so your request goes straight to its verifiers."
+              : "If the organisation isn't claimed on Crede yet, we'll queue your request and send it once someone from there claims it."}
           </p>
         </div>
-      </div>
+      )}
+    </Sheet>
+  );
+}
 
-      {/* Methods as circle rows */}
-      <div className="space-y-2">
-        <h2 className="text-sm font-medium uppercase tracking-wider text-muted">Verification methods</h2>
-        {items.map((item) => {
-          const approved = item.status === "approved";
-          const pending = item.status === "pending";
-          return (
-            <div key={item.kind} className="card flex flex-wrap items-center justify-between gap-4 py-4">
-              <div className="flex items-start gap-3 min-w-0">
-                <span
-                  className={`mt-0.5 text-base leading-none ${
-                    approved ? "text-success" : pending ? "text-warning" : "text-muted"
-                  }`}
-                  aria-hidden
-                >
-                  {approved ? "●" : "○"}
-                </span>
-                <div>
-                  <p className="text-sm font-medium">{LABELS[item.kind] || item.kind}</p>
-                  <p className="text-xs text-muted capitalize">
-                    {item.status}
-                    {approved ? ` · +${item.points} pts` : ""}
-                    {item.notes ? ` · ${item.notes}` : ""}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                {item.document_key && (
-                  <TextAction
-                    href={`/backend/api/verification/files/${item.id}`}
-                    variant="muted"
-                  >
-                    View document
-                  </TextAction>
-                )}
-                {!approved && item.kind !== "email" && (
-                  <>
-                    <input
-                      type="file"
-                      className="hidden"
-                      ref={(el) => {
-                        fileRefs.current[item.kind] = el;
-                      }}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) handleUpload(item.kind, f);
-                      }}
-                    />
-                    <TextAction
-                      variant="primary"
-                      onClick={() => fileRefs.current[item.kind]?.click()}
-                      disabled={uploading === item.kind}
-                    >
-                      {uploading === item.kind
-                        ? "Uploading…"
-                        : ACTIONS[item.kind] || "Upload proof"}
-                    </TextAction>
-                  </>
-                )}
-                {approved && <span className="text-xs text-success">Complete</span>}
+function ClaimRow({ c, onRequest, onUploaded }: { c: Claim; onRequest: () => void; onUploaded: () => void }) {
+  const k = KIND[c.claim_type] || KIND.employment!;
+  const lv = LEVEL[c.level] || LEVEL.self_reported;
+  const file = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  async function upload(f?: File) {
+    if (!f) return;
+    setBusy(true);
+    const fd = new FormData(); fd.append("file", f);
+    try { await api.postForm(`/verification/${c.subject_type}/${c.subject_id}/document`, fd); toast("Document attached"); onUploaded(); }
+    catch (e) { toast(e instanceof Error ? e.message : "Upload failed", "error"); } finally { setBusy(false); }
+  }
+  async function cancel() {
+    if (!c.request) return;
+    await api.delete(`/verification/requests/${c.request.request_id}`).then(onUploaded).catch((e) => toast(e.message, "error"));
+  }
+  const dates = c.start ? `${fmtMonth(c.start)} – ${c.is_current || !c.end ? "Present" : fmtMonth(c.end)}` : "";
+  const done = c.level === "issuer_verified" || c.level === "verified";
+  const waiting = c.request && ["pending", "queued"].includes(c.request.status);
+  return (
+    <div className="flex gap-3 p-4">
+      <SoftIcon icon={k.icon} tint={k.tint} size="sm" />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div className="min-w-0"><p className="font-medium leading-snug">{c.title}</p>
+            <p className="text-sm text-muted">{[c.subtitle, dates].filter(Boolean).join(" · ")}</p></div>
+          <span className={cn("pill shrink-0", lv.pill)}><lv.icon className="h-3 w-3" />{c.request?.status === "queued" ? "Queued" : lv.label}</span>
+        </div>
+        {c.request?.org && (
+          <p className="mt-1 text-xs text-muted">
+            {c.request.status === "approved" ? `Confirmed by ${c.request.org.name}` : c.request.status === "rejected" ? `${c.request.org.name} declined` : c.request.status === "queued" ? `Waiting for ${c.request.org.name} to join Crede` : `Sent to ${c.request.org.name}`}
+            {c.request.note ? ` — “${c.request.note}”` : ""}
+          </p>
+        )}
+        {!done && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            {!waiting && <button type="button" onClick={onRequest} className="link flex items-center gap-1"><Send className="h-3.5 w-3.5" />{c.request?.status === "rejected" ? "Ask another organisation" : "Request verification"}</button>}
+            {waiting && <button type="button" onClick={cancel} className="link-muted flex items-center gap-1"><X className="h-3.5 w-3.5" />Cancel request</button>}
+            <input ref={file} type="file" hidden accept=".pdf,image/*" onChange={(e) => upload(e.target.files?.[0])} />
+            <button type="button" onClick={() => file.current?.click()} className="link-muted flex items-center gap-1" disabled={busy}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}{c.has_document ? "Replace document" : "Attach proof"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function IdentityCard({ id, onDone }: { id: Overview["identity"]; onDone: () => void }) {
+  const file = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  async function upload(f?: File) {
+    if (!f) return;
+    setBusy(true);
+    const fd = new FormData(); fd.append("file", f);
+    try { await api.postForm("/verification/identity", fd); toast("ID submitted for review"); onDone(); }
+    catch (e) { toast(e instanceof Error ? e.message : "Upload failed", "error"); } finally { setBusy(false); }
+  }
+  const st = id.verified ? ["pill-green", "Confirmed"] : id.status === "submitted" ? ["pill-amber", "In review"] : id.status === "rejected" ? ["pill-red", "Declined"] : ["pill-gray", "Not started"];
+  return (
+    <div className="card flex gap-3 p-4">
+      <SoftIcon icon={IdCard} tint="sky" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2"><p className="font-medium">Identity</p><span className={`pill ${st[0]}`}>{st[1]}</span></div>
+        <p className="text-sm text-muted">{id.verified ? "Your government ID has been confirmed by Crede." : id.status === "submitted" ? "We're reviewing your ID — usually within one working day." : "Upload your NIN slip, international passport, driver's licence or voter's card. Only Crede admins see it."}</p>
+        {id.status === "rejected" && id.notes && <p className="mt-1 text-sm text-danger">{id.notes}</p>}
+        {!id.verified && id.status !== "submitted" && (
+          <>
+            <input ref={file} type="file" hidden accept=".pdf,image/*" onChange={(e) => upload(e.target.files?.[0])} />
+            <button type="button" className="btn btn-soft btn-sm mt-3" disabled={busy} onClick={() => file.current?.click()}>{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}Upload ID</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function VerificationPage() {
+  const { refresh } = useMe();
+  const { data, error, reload } = useApi<Overview>("/verification");
+  const [req, setReq] = useState<Claim | null>(null);
+  const reloadAll = () => { reload(); refresh(); };
+
+  if (error) return <ErrorNote message={error} onRetry={reload} />;
+  const s = data?.summary;
+  const b = data?.badge;
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <PageHeader title="Verification" lead="Every claim on your profile, and who has confirmed it. Recruiters see the same summary." />
+      {!data ? <SkeletonList n={3} lines={2} /> : (
+        <div className="space-y-5">
+          <div className="card flex items-center gap-5 p-5">
+            <div className="relative"><Ring value={s!.ratio} />
+              <span className="tabular absolute inset-0 flex items-center justify-center text-lg font-semibold">{Math.round(s!.ratio * 100)}%</span></div>
+            <div className="min-w-0 flex-1">
+              <p className="text-lg font-semibold tracking-tight">{s!.label}</p>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                <span className="pill pill-green">{s!.issuer_verified} by issuers</span>
+                {s!.pending > 0 && <span className="pill pill-amber">{s!.pending} pending</span>}
+                {s!.document_provided > 0 && <span className="pill pill-blue">{s!.document_provided} with documents</span>}
+                <span className="pill pill-gray">{s!.self_reported} self-reported</span>
               </div>
             </div>
-          );
-        })}
-      </div>
+          </div>
 
-      <div className="card space-y-2">
-        <p className="text-sm font-medium">Portability</p>
-        <p className="text-xs text-muted">
-          Export a shareable verification summary. Useful for applications and external proof.
-        </p>
-        <TextAction
-          variant="primary"
-          onClick={() => {
-            const summary = {
-              score,
-              items: items.map((i) => ({
-                kind: i.kind,
-                status: i.status,
-                points: i.points,
-              })),
-              exported_at: new Date().toISOString(),
-            };
-            const blob = new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "crede-verification-proof.json";
-            a.click();
-            URL.revokeObjectURL(url);
-          }}
-        >
-          Export verification proof
-        </TextAction>
-      </div>
+          <Link href="/badges" className="card card-hover flex items-center gap-3 p-4">
+            <SoftIcon icon={BadgeCheck} tint={b!.level === "green" ? "emerald" : "gray"} />
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">{b!.level === "green" ? "You have the green badge" : b!.level === "gray" ? "You have the gray badge" : "Get a verified badge"}</span>
+              <span className="block text-sm text-muted">
+                {b!.last_request && b!.last_request.status === "pending_review" ? `Your ${b!.last_request.level} badge request is with our team.`
+                  : b!.eligibility.green.eligible && b!.level !== "green" ? "You're eligible for the green badge."
+                    : b!.eligibility.gray.eligible && b!.level === "none" ? "You're eligible for the gray badge."
+                      : b!.level === "green" ? "Identity and key claims confirmed." : (b!.level === "gray" ? b!.eligibility.green.missing[0] : b!.eligibility.gray.missing[0]) || "See what's needed"}
+              </span>
+            </span>
+            <ChevronRight className="h-4 w-4 text-muted" />
+          </Link>
 
-      <p className="text-xs text-muted">
-        All verification features are available to every user. There are no limits on requests.
-      </p>
+          <IdentityCard id={data.identity} onDone={reloadAll} />
+
+          <section>
+            <h2 className="section-title mb-2 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-muted" />Claims</h2>
+            {data.claims.length === 0 ? (
+              <div className="card p-5 text-sm text-muted">Add roles and education on your <Link href="/timeline" className="link">Timeline</Link> and certificates on <Link href="/certifications" className="link">Certifications</Link> — they&apos;ll appear here to verify.</div>
+            ) : (
+              <div className="card stagger divide-y divide-border">
+                {data.claims.map((c) => <ClaimRow key={`${c.subject_type}-${c.subject_id}`} c={c} onRequest={() => setReq(c)} onUploaded={reloadAll} />)}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+      <RequestSheet claim={req} onClose={() => setReq(null)} onDone={reloadAll} />
     </div>
   );
 }
