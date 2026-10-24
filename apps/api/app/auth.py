@@ -360,16 +360,16 @@ async def get_or_create_profile(
         if auth.email and profile.email != auth.email:
             profile.email = auth.email
             changed = True
-        if auth.full_name and not profile.full_name:
+        # Identity (name, username, phone) is managed in Collab Accounts: always mirror SSO.
+        if auth.full_name and profile.full_name != auth.full_name:
             profile.full_name = auth.full_name
             changed = True
-        # Prefill blanks from Collab without overwriting user edits
-        if getattr(auth, "username", None) and not profile.username:
-            taken = db.query(Profile).filter(Profile.username == auth.username).first()
+        if getattr(auth, "username", None) and profile.username != auth.username:
+            taken = db.query(Profile).filter(Profile.username == auth.username, Profile.id != profile.id).first()
             if not taken:
                 profile.username = auth.username
                 changed = True
-        if getattr(auth, "phone", None) and not getattr(profile, "phone", None):
+        if getattr(auth, "phone", None) and getattr(profile, "phone", None) != auth.phone:
             profile.phone = auth.phone
             changed = True
         if getattr(auth, "country", None) and not getattr(profile, "country", None):

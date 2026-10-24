@@ -90,6 +90,10 @@ class Settings(BaseSettings):
     max_image_mb: int = 8
     report_autohide_threshold: int = 3
 
+    # ── Career insights & CV/file import ─────────────────────────────────────
+    insights_ai: bool = True  # optional cached AI narrative on the dashboard (needs an LLM configured)
+    import_max_mb: int = 10  # max upload size for Career Timeline import (parsed then discarded)
+
     redis_url: str = "redis://localhost:6379/0"
     meili_url: str = "http://localhost:7700"
     meili_master_key: str = ""

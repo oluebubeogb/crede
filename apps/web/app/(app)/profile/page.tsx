@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Award, BadgeCheck, BriefcaseBusiness, Camera, ExternalLink, Loader2, ShieldCheck, Sparkles } from "lucide-react";
+import { Award, BadgeCheck, BriefcaseBusiness, Camera, ExternalLink, FileUp, Loader2, Lock, ShieldCheck, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { Avatar, ErrorNote, PageHeader, RowLink, Skeleton, Switch, VerifiedBadge, toast } from "@/components/ui/kit";
@@ -12,12 +12,16 @@ type Profile = {
   phone?: string | null; years_experience?: number | null; summary?: string | null; is_public: boolean; avatar_url?: string | null; badge_level?: string | null;
   profile_completion?: number; verification_score?: number; claims?: { label?: string; total: number; verified: number; pending: number };
 };
+/** Managed in Collab Accounts and synced on every sign-in — shown read-only here. */
+const IDENTITY: { key: keyof Profile; label: string }[] = [
+  { key: "full_name", label: "Full name" }, { key: "username", label: "Username" }, { key: "phone", label: "Phone" },
+];
 const FIELDS: { key: keyof Profile; label: string; ph?: string; half?: boolean }[] = [
-  { key: "full_name", label: "Full name", half: true }, { key: "username", label: "Username", ph: "for crede.ng/u/…", half: true },
   { key: "headline", label: "Headline", ph: "e.g. Accountant · ICAN · IFRS" },
   { key: "location", label: "Location", ph: "Lagos, Nigeria", half: true }, { key: "industry", label: "Industry", ph: "Fintech, Oil & gas…", half: true },
-  { key: "phone", label: "Phone", ph: "+234…", half: true }, { key: "years_experience", label: "Years of experience", half: true },
+  { key: "years_experience", label: "Years of experience", half: true },
 ];
+const ACCOUNTS_URL = process.env.NEXT_PUBLIC_ACCOUNTS_URL || "https://accounts.collab.name.ng";
 
 export default function ProfilePage() {
   const { data, error, loading, reload, setData } = useApi<Profile>("/profile/me");
@@ -71,6 +75,21 @@ export default function ProfilePage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_260px]">
         <section className="card p-5">
+          <div className="mb-5 rounded-2xl bg-surface-2 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-muted"><Lock className="h-3.5 w-3.5" />Managed in Collab Accounts</p>
+              <a href={ACCOUNTS_URL} target="_blank" rel="noreferrer" className="link inline-flex items-center gap-1 text-xs">Edit in Collab Accounts<ExternalLink className="h-3 w-3" /></a>
+            </div>
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {IDENTITY.map((f) => (
+                <div key={f.key} className="min-w-0">
+                  <dt className="text-[11px] text-muted">{f.label}</dt>
+                  <dd className="truncate text-sm font-medium" title={String(data[f.key] ?? "")}>{f.key === "username" && data.username ? `@${data.username}` : (data[f.key] as string) || <span className="font-normal text-muted">Not set</span>}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3 text-[11px] text-muted">Your name, username and phone come from your Collab account and update here automatically the next time you sign in.</p>
+          </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {FIELDS.map((f) => (
               <div key={f.key} className={f.half ? "" : "sm:col-span-2"}>
@@ -91,6 +110,7 @@ export default function ProfilePage() {
           </div>
         </section>
         <aside className="card h-fit divide-y divide-border overflow-hidden">
+          <RowLink href="/timeline#import" icon={FileUp} tint="violet" title="Import from a file" sub="CV, LinkedIn export, transcript…" />
           <RowLink href="/timeline" icon={BriefcaseBusiness} tint="blue" title="Timeline" sub="Roles & education" />
           <RowLink href="/skills" icon={Sparkles} tint="sky" title="Skills" sub="What you can do" />
           <RowLink href="/certifications" icon={Award} tint="amber" title="Certifications" sub="Professional credentials" />

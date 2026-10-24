@@ -7,6 +7,7 @@ import { useApi } from "@/lib/hooks";
 import { cn, fmtMonth } from "@/lib/utils";
 import { EmptyState, ErrorNote, PageHeader, Sheet, SkeletonList, SoftIcon, Switch, toast } from "@/components/ui/kit";
 import { OrgPicker, VerifyLine, type VInfo } from "@/components/orgs";
+import CareerImport from "@/components/CareerImport";
 
 type Entry = {
   id: number; entry_type: "work" | "education"; job_title: string; organization: string; organization_id?: number | null; field_of_study?: string | null; grade?: string | null;
@@ -106,11 +107,13 @@ export default function TimelinePage() {
   const isEdu = form?.entry_type === "education";
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader eyebrow="Profile" title="Career timeline" lead="Your roles and education. Pick organisations from the list so they can verify you."
+      <PageHeader eyebrow="Profile" title="Career timeline" lead="Your roles and education. Add them by hand or import a CV — one upload fills your skills and certifications too."
         action={<div className="flex gap-1.5"><button type="button" className="btn btn-soft btn-sm" onClick={() => setForm(blank("education"))}><GraduationCap className="h-4 w-4" /><span className="hidden sm:inline">Education</span></button><button type="button" className="btn btn-primary btn-sm" onClick={() => setForm(blank("work"))}><Plus className="h-4 w-4" />Role</button></div>} />
 
+      <div className="mb-6"><CareerImport onApplied={reload} /></div>
+
       {error ? <ErrorNote message={error} onRetry={reload} /> : loading && !data ? <SkeletonList n={3} /> : !sorted.length ? (
-        <EmptyState icon={BriefcaseBusiness} title="Start your timeline" body="Add your current or most recent role — NYSC and internships count." action={<button type="button" className="link text-sm" onClick={() => setForm(blank("work"))}>Add a role</button>} />
+        <EmptyState icon={BriefcaseBusiness} title="Start your timeline" body="Import a CV above, or add your current or most recent role — NYSC and internships count." action={<button type="button" className="link text-sm" onClick={() => setForm(blank("work"))}>Add a role</button>} />
       ) : (
         <div className="space-y-8">
           {[["Experience", work], ["Education", edu]].map(([label, items]) => (items as Entry[]).length > 0 && (

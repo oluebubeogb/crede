@@ -15,6 +15,8 @@ function isPublic(pathname: string): boolean {
   // Public profile pages
   if (pathname.startsWith("/u/")) return true;
   if (pathname.startsWith("/p/")) return true;
+  // Generated Open Graph images for shared posts
+  if (pathname.startsWith("/og/")) return true;
   // Static / Next internals
   if (
     pathname.startsWith("/_next") ||
@@ -36,6 +38,18 @@ export function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/feed";
     return NextResponse.redirect(url);
+  }
+
+  // Shared post links: members get the interactive post, everyone else (incl. link-preview
+  // crawlers) the public /p/{id} page with rich Open Graph metadata.
+  const postMatch = pathname.match(/^\/(p|post)\/(\d+)\/?$/);
+  if (postMatch) {
+    const want = token ? "post" : "p";
+    if (postMatch[1] !== want) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/${want}/${postMatch[2]}`;
+      return NextResponse.redirect(url);
+    }
   }
 
   if (isPublic(pathname)) {

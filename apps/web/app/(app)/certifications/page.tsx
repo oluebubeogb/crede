@@ -39,7 +39,7 @@ export default function CertificationsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader eyebrow="Profile" title="Certifications" lead="Pick the issuer from the list — if they verify on Crede, they can confirm it for you."
+      <PageHeader eyebrow="Profile" title="Certifications" lead={<>Pick the issuer from the list — if they verify on Crede, they can confirm it for you. Have them in a CV? <a href="/timeline#import" className="link">Import from a file</a>.</>}
         action={<button type="button" className="btn btn-primary btn-sm" onClick={() => setForm({ ...EMPTY })}><Plus className="h-4 w-4" />Add</button>} />
       {error ? <ErrorNote message={error} onRetry={reload} /> : loading && !data ? <SkeletonList n={2} /> : !data?.length ? (
         <EmptyState icon={Award} tint="amber" title="No certifications yet" body="Professional certificates count toward education & certification matching." action={<button type="button" className="link text-sm" onClick={() => setForm({ ...EMPTY })}>Add certification</button>} />

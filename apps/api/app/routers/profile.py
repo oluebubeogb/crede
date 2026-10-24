@@ -6,15 +6,17 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.auth import get_or_create_profile
+from app.config import get_settings
 from app.database import get_db
 from app.models import Profile
 from app.schemas import DashboardOut, ProfileOut, ProfileUpdate
 from app.models import GeneratedDocument
 from app.models_suite import Comment, MatchCache, Post, PostReaction, ProfileSnapshot
 from app.services.admin import is_platform_admin
-from app.services.completion import claims_summary, refresh_scores
+from app.services.completion import badge_tier, claims_summary, refresh_scores
 
 router = APIRouter(prefix="/profile", tags=["profile"])
+IDENTITY_FIELDS = ("full_name", "username", "phone", "phone_country_code")
 
 
 def _profile_out(profile: Profile) -> ProfileOut:
@@ -60,14 +62,14 @@ def update_me(
     db: Annotated[Session, Depends(get_db)],
 ):
     data = body.model_dump(exclude_unset=True)
-    if "username" in data and data["username"]:
-        exists = (
-            db.query(Profile)
-            .filter(Profile.username == data["username"], Profile.id != profile.id)
-            .first()
-        )
-        if exists:
-            raise HTTPException(400, "Username taken")
+    # Identity fields are managed in Collab Accounts (synced from SSO on every sign-in).
+    # Unchanged values are ignored so older clients that send the whole form keep working.
+    blocked = [k for k in IDENTITY_FIELDS if k in data and (data[k] or None) != (getattr(profile, k, None) or None)]
+    if blocked:
+        raise HTTPException(400, {"message": "Name, username and phone are managed in Collab Accounts",
+                                  "fields": blocked, "manage_url": get_settings().accounts_public_url})
+    for k in IDENTITY_FIELDS:
+        data.pop(k, None)
     # Merge preferences JSON instead of clobbering
     if "preferences" in data and data["preferences"] is not None:
         existing = getattr(profile, "preferences", None) or {}
@@ -231,5 +233,20 @@ def dashboard_stats(profile: Annotated[Profile, Depends(get_or_create_profile)],
         "community": {"weeks": weeks, "totals": {"posts": len(my_posts), "likes": sum(p.like_count or 0 for p in my_posts),
                                                  "comments": sum(p.comment_count or 0 for p in my_posts),
                                                  "shares": sum(p.share_count or 0 for p in my_posts)}},
-        "claims": claims_summary(profile), "badge_level": profile.badge_level or "none",
+        "claims": claims_summary(profile), "badge_level": profile.badge_level or "none", "tier": badge_tier(profile),
     }
+
+
+@router.get("/insights")
+def career_insights(profile: Annotated[Profile, Depends(get_or_create_profile)], db: Annotated[Session, Depends(get_db)]):
+    """Deterministic career insights (strength, trajectory, skill gaps, certs, next steps) + cached AI narrative."""
+    from app.services import insights
+    return insights.build(db, profile)
+
+
+@router.post("/insights/narrative")
+async def career_insights_narrative(profile: Annotated[Profile, Depends(get_or_create_profile)], db: Annotated[Session, Depends(get_db)]):
+    """Optional short AI read; cached per facts_version, regenerated at most daily. Returns null when no LLM."""
+    from app.services import insights
+    data = insights.build(db, profile)
+    return {"ai": await insights.narrative(db, profile, data)}

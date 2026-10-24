@@ -111,15 +111,17 @@ def _doc_card(db: Session, doc_id: int | None, show_contact: bool) -> dict | Non
     return card
 
 
-def _job_card(db: Session, job_id: int | None, viewer: Profile) -> dict | None:
+def _job_card(db: Session, job_id: int | None, viewer: Profile | None) -> dict | None:
     job = db.get(Job, job_id) if job_id else None
     if not job:
         return None
     org = db.get(Organization, job.organization_id)
-    try:
-        m = matcher.summary(matcher.match_job(db, viewer, job))
-    except Exception:  # noqa: BLE001
-        m = None
+    m = None
+    if viewer is not None:
+        try:
+            m = matcher.summary(matcher.match_job(db, viewer, job))
+        except Exception:  # noqa: BLE001
+            m = None
     return {"id": job.id, "title": job.title, "location": job.location, "employment_type": job.employment_type, "status": job.status,
             "salary_min": job.salary_min, "salary_max": job.salary_max, "salary_currency": job.salary_currency,
             "organization": {"id": org.id, "name": org.name, "logo_url": getattr(org, "logo_url", None),
@@ -127,10 +129,18 @@ def _job_card(db: Session, job_id: int | None, viewer: Profile) -> dict | None:
             "match": m}
 
 
-def _post_out(db: Session, post: Post, viewer: Profile, authors: dict | None = None, mine: dict | None = None, depth: int = 0) -> dict:
+def post_link(post_id: int) -> str:
+    """Public, crawler-friendly share URL (rich Open Graph preview; signed-in members are sent on to /post/{id})."""
+    return f"{get_settings().app_url.rstrip('/')}/p/{post_id}"
+
+
+def _post_out(db: Session, post: Post, viewer: Profile | None, authors: dict | None = None, mine: dict | None = None, depth: int = 0) -> dict:
+    """viewer=None renders the logged-out public view: no viewer state, contact always hidden, no match scores."""
     authors = authors or {}
     author = authors.get(post.profile_id) or db.get(Profile, post.profile_id)
-    if mine is None:
+    if viewer is None:
+        mine = set()
+    elif mine is None:
         mine = {r.kind for r in db.query(PostReaction).filter(PostReaction.target_type == "post", PostReaction.target_id == post.id,
                                                               PostReaction.profile_id == viewer.id).all()}
     else:
@@ -139,19 +149,28 @@ def _post_out(db: Session, post: Post, viewer: Profile, authors: dict | None = N
     out = {"id": post.id, "kind": post.kind, "body": post.body, "topics": post.topics or [],
            "images": [{**i, "url": public_url(i.get("key"))} for i in (post.images or [])],
            "author": _author(author), "created_at": post.created_at.isoformat() if post.created_at else None,
-           "edited": bool(post.updated_at and post.created_at and (post.updated_at - post.created_at).total_seconds() > 60),
+           "edited": bool(post.edited_at and post.created_at and (post.edited_at - post.created_at).total_seconds() > 60),
            "counts": {"likes": post.like_count, "comments": post.comment_count, "shares": post.share_count},
-           "liked": "like" in mine, "saved": "save" in mine, "is_mine": post.profile_id == viewer.id,
-           "can_moderate": is_platform_admin(viewer), "hidden": post.hidden,
-           "url": f"{get_settings().app_url.rstrip('/')}/post/{post.id}"}
+           "liked": "like" in mine, "saved": "save" in mine, "is_mine": bool(viewer and post.profile_id == viewer.id),
+           "can_moderate": bool(viewer and is_platform_admin(viewer)), "hidden": post.hidden,
+           "url": post_link(post.id)}
     if post.kind == "document":
-        out["document"] = _doc_card(db, post.document_id, bool(opts.get("show_contact")))
+        out["document"] = _doc_card(db, post.document_id, bool(opts.get("show_contact")) and viewer is not None)
     if post.kind == "job":
         out["job"] = _job_card(db, post.job_id, viewer)
     if post.kind == "repost" and post.repost_of_id and depth == 0:
         orig = db.get(Post, post.repost_of_id)
-        out["repost_of"] = _post_out(db, orig, viewer, depth=1) if orig and not orig.hidden else None
+        ok = orig and not orig.hidden and (viewer is not None or _publicly_visible(db, orig))
+        out["repost_of"] = _post_out(db, orig, viewer, depth=1) if ok else None
     return out
+
+
+def _publicly_visible(db: Session, post: Post | None) -> bool:
+    """Logged-out visibility: never hidden/moderated posts, never posts by private profiles."""
+    if not post or post.hidden:
+        return False
+    author = db.get(Profile, post.profile_id)
+    return bool(author and author.is_public is not False)
 
 
 def _get_post(db: Session, post_id: int, viewer: Profile) -> Post:
@@ -282,6 +301,8 @@ def edit_post(post_id: int, body: PostPatch, profile: Prof, db: DB):
         post.topics = _norm_topics(body.topics if body.topics is not None else post.topics or [], post.body)
     elif body.topics is not None:
         post.topics = _norm_topics(body.topics, post.body)
+    if body.body is not None or body.topics is not None:
+        post.edited_at = datetime.now(timezone.utc)
     if body.show_contact is not None:
         post.share_options = {**(post.share_options or {}), "show_contact": body.show_contact}
     db.commit()
@@ -350,6 +371,55 @@ def share_post(post_id: int, body: ShareIn, profile: Prof, db: DB):
                    body.body[:100], link=f"/post/{target.id}", actor_id=profile.id, commit=False)
     db.commit()
     return {"shares": target.share_count, "post": _post_out(db, new, profile) if new else None}
+
+
+# ── public (logged-out) share view ─────────────────────────────────────────
+public_router = APIRouter(prefix="/community/public", tags=["community-public"])
+
+
+def _public_post(db: Session, post_id: int) -> Post:
+    post = db.get(Post, post_id)
+    if not _publicly_visible(db, post):
+        raise HTTPException(404, "Post not found")
+    return post
+
+
+@public_router.get("/posts/{post_id}")
+def public_post(post_id: int, db: DB):
+    """Share-safe view of a post for link previews and the /p/{id} page. Contact details are never included."""
+    from fastapi.responses import JSONResponse
+    out = _post_out(db, _public_post(db, post_id), None)
+    for k in ("liked", "saved", "is_mine", "can_moderate", "hidden"):
+        out.pop(k, None)
+    return JSONResponse(out, headers={"Cache-Control": "public, max-age=120"})
+
+
+@public_router.get("/posts/{post_id}/image.jpg")
+def public_post_image(post_id: int, db: DB):
+    """First post image re-encoded as JPEG (≤1200px) — every social crawler accepts JPEG, not all accept WebP."""
+    import io
+
+    from fastapi.responses import Response
+    from PIL import Image
+
+    from app.services.storage import read_public
+    post = _public_post(db, post_id)
+    imgs = post.images or []
+    if not imgs and post.kind == "repost" and post.repost_of_id:
+        orig = db.get(Post, post.repost_of_id)
+        imgs = (orig.images or []) if _publicly_visible(db, orig) else []
+    if not imgs:
+        raise HTTPException(404, "No image")
+    try:
+        im = Image.open(io.BytesIO(read_public(imgs[0]["key"])))
+        im = im.convert("RGB")
+        im.thumbnail((1200, 1200))
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=85, optimize=True, progressive=True)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(404, "Image unavailable")
+    return Response(buf.getvalue(), media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=86400", "X-Image-Size": f"{im.width}x{im.height}"})
 
 
 @router.get("/posts/{post_id}/document", response_class=HTMLResponse)

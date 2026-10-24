@@ -27,6 +27,8 @@ ARG API_PROXY_TARGET=http://crede-api:8008
 ENV API_PROXY_TARGET=$API_PROXY_TARGET
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
+# Fonts + logo for the generated Open Graph post cards (/og/post/[id])
+COPY --from=builder /app/assets ./assets
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 USER nextjs

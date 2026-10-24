@@ -58,7 +58,7 @@ export default function SkillsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader eyebrow="Profile" title="Skills" lead="Skills feed your match score and CVs. Add the ones you can back up with your timeline." />
+      <PageHeader eyebrow="Profile" title="Skills" lead={<>Skills feed your match score and CVs. Add the ones you can back up — or <a href="/timeline#import" className="link">import them from your CV</a>.</>} />
 
       <form className="card p-4 sm:p-5" onSubmit={(e) => { e.preventDefault(); add(); }}>
         <label className="label" htmlFor="skill">Add skill</label>

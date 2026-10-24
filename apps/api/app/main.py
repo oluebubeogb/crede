@@ -13,6 +13,7 @@ from app.database import Base, engine
 from app import models_suite  # noqa: F401  (register v3 tables)
 from app.routers import (
     auth_routes,
+    imports,
     certifications,
     documents,
     profile,
@@ -175,6 +176,8 @@ def _try_schema() -> bool:
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_org_member_profile ON organization_members (organization_id, profile_id) WHERE profile_id IS NOT NULL",
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_org_source_external ON organizations (source, external_id) WHERE external_id IS NOT NULL",
                 "CREATE INDEX IF NOT EXISTS ix_organizations_name_lower ON organizations (lower(name))",
+                # Post "edited" flag no longer derived from updated_at (which moves on likes/comments)
+                "ALTER TABLE posts ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ",
             ]:
                 conn.execute(text(ddl))
             # Legacy members (local User.id) → profile_id
@@ -310,10 +313,12 @@ app.include_router(jobs.router, prefix="/api")
 app.include_router(candidates.router, prefix="/api")
 app.include_router(opportunities.router, prefix="/api")
 app.include_router(occupations.router, prefix="/api")
+app.include_router(community.public_router, prefix="/api")
 app.include_router(community.router, prefix="/api")
 app.include_router(badges.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+app.include_router(imports.router, prefix="/api")
 
 
 @app.get("/api/media/{key:path}")

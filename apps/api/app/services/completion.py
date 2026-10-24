@@ -87,6 +87,48 @@ def badge_eligibility(profile: Profile) -> dict:
     }
 
 
+TIER_LABEL = {"none": "Not verified yet", "gray": "Gray badge", "green": "Green badge"}
+
+
+def badge_tier(profile: Profile) -> dict:
+    """Badge-tier presentation (none → gray → green) with a checklist — no percentages.
+
+    Gray  = identity confirmed.  Green = identity + 2 issuer-verified claims incl. an employer/school.
+    """
+    claims = list_claims(profile)
+    level = getattr(profile, "badge_level", None) or "none"
+    identity = bool(getattr(profile, "identity_verified", False))
+    issuer = [c for c in claims if c["level"] == "issuer_verified"]
+    key_issuer = any(c["claim_type"] in ("employment", "education") for c in issuer)
+    evidence = sum(1 for c in claims if c["level"] in ("document_provided", "pending", "issuer_verified"))
+    items = [
+        {"key": "claims", "label": "Add roles, education or certificates", "done": len(claims) > 0, "tier": "gray",
+         "detail": f"{len(claims)} claim{'s' if len(claims) != 1 else ''} on your profile" if claims else "Your timeline is empty", "href": "/timeline"},
+        {"key": "identity", "label": "Confirm your identity", "done": identity, "tier": "gray",
+         "detail": "Government ID confirmed" if identity else "Upload a government ID", "href": "/verification#identity"},
+        {"key": "evidence", "label": "Back a claim with evidence", "done": evidence > 0, "tier": "green",
+         "detail": f"{evidence} with documents or sent to issuers" if evidence else "Attach a letter, certificate or payslip", "href": "/verification"},
+        {"key": "issuer2", "label": "2 claims confirmed by issuers", "done": len(issuer) >= 2, "tier": "green",
+         "detail": f"{min(len(issuer), 2)} of 2 confirmed", "href": "/verification"},
+        {"key": "key_issuer", "label": "An employer or school confirms a role or degree", "done": key_issuer, "tier": "green",
+         "detail": "Confirmed" if key_issuer else "Request it from a claim below", "href": "/verification"},
+    ]
+    elig = badge_eligibility(profile)
+    if level == "green":
+        nxt, status = None, "Identity and key claims confirmed by issuers."
+    elif elig["green"]["eligible"]:
+        nxt, status = "green", "You're eligible for the green badge — request it."
+    elif level == "gray":
+        nxt, status = "green", (elig["green"]["missing"] or ["Keep verifying claims"])[0]
+    elif elig["gray"]["eligible"]:
+        nxt, status = "gray", "You're eligible for the gray badge — request it."
+    else:
+        nxt, status = "gray", (elig["gray"]["missing"] or ["Confirm your identity"])[0]
+    return {"level": level, "label": TIER_LABEL.get(level, level), "next": nxt, "status": status,
+            "eligible": {"gray": elig["gray"]["eligible"], "green": elig["green"]["eligible"]},
+            "done": sum(1 for i in items if i["done"]), "items": items}
+
+
 def recompute_verification_score(profile: Profile) -> int:
     """Legacy column: % of claims that are document- or issuer-backed (kept for old clients)."""
     s = claims_summary(profile)

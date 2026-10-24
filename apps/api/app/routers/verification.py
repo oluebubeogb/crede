@@ -17,7 +17,7 @@ from app.database import get_db
 from app.models import Certification, Organization, Profile, TimelineEntry, VerificationItem
 from app.models_suite import BadgeRequest, ProfileFile, VerificationRequest
 from app.services import orgs
-from app.services.completion import badge_eligibility, claims_summary, list_claims, refresh_scores
+from app.services.completion import badge_eligibility, badge_tier, claims_summary, list_claims, refresh_scores
 from app.services.files import save_evidence
 from app.services.notify import notify_admins
 from app.services.storage import exists, read_bytes
@@ -57,7 +57,7 @@ def overview(profile: Prof, db: DB):
         c["request"] = orgs.verification_info(db, c["subject_type"], c["subject_id"])
     last_badge = db.query(BadgeRequest).filter(BadgeRequest.profile_id == profile.id).order_by(BadgeRequest.created_at.desc()).first()
     return {
-        "summary": claims_summary(profile), "claims": claims, "identity": _identity(db, profile),
+        "summary": claims_summary(profile), "claims": claims, "identity": _identity(db, profile), "tier": badge_tier(profile),
         "badge": {"level": profile.badge_level or "none", "granted_at": profile.badge_granted_at.isoformat() if profile.badge_granted_at else None,
                   "eligibility": badge_eligibility(profile),
                   "last_request": {"id": last_badge.id, "level": last_badge.level, "status": last_badge.status,

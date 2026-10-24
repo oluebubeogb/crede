@@ -5,7 +5,9 @@ import { ArrowRight, BadgeCheck, BarChart3, BriefcaseBusiness, FileText, Lightbu
 import { useApi } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorNote, Skeleton, SoftIcon, Stat, type Tint } from "@/components/ui/kit";
-import { AreaChart, CoverageBars, Histogram, Ring, StackedBars } from "@/components/Charts";
+import { AreaChart, CoverageBars, Histogram, StackedBars } from "@/components/Charts";
+import CareerInsights from "@/components/CareerInsights";
+import { TierChecklist, TierEmblem, TierTrack, type Tier } from "@/components/VerificationTier";
 
 type Dash = {
   profile: { full_name?: string; headline?: string; verification_score: number; profile_completion: number; badge_level?: string | null };
@@ -19,11 +21,10 @@ type Stats = {
   community: { weeks: { week: string; posts: number; comments: number; likes_received: number }[]; totals: { posts: number; likes: number; comments: number; shares: number } };
   claims: { total: number; verified: number; issuer_verified: number; label: string; ratio: number; identity_verified: boolean };
   badge_level?: string | null;
+  tier?: Tier;
 };
 
-const ACTION_HREF: Record<string, string> = {
-  "Complete Profile": "/profile", "Verify Employment": "/verification", "Generate CV": "/generate", "Add first career milestone": "/timeline",
-};
+const TIER_NAME: Record<string, string> = { green: "Green badge", gray: "Gray badge", none: "Not verified" };
 const MONTH = (m: string) => new Date(m + "-01").toLocaleString("en", { month: "short" });
 const DAY = (d: string) => new Date(d).toLocaleDateString("en", { day: "numeric", month: "short" });
 
@@ -53,18 +54,12 @@ export default function DashboardPage() {
   const totalMatches = s ? s.matches.buckets.reduce((a, b) => a + b.count, 0) : 0;
   const strong = s ? s.matches.buckets.slice(-2).reduce((a, b) => a + b.count, 0) : 0;
   const docsTotal = s ? s.documents.reduce((a, m) => a + m.cv + m.cover_letter + m.bio, 0) : d.generated_cvs;
-  const next = d.timeline_count === 0 ? { href: "/timeline", label: "Add your first role", body: "Everything — matching, CVs, verification — builds on your timeline." }
-    : p.verification_score < 30 ? { href: "/verification", label: "Get a claim verified", body: "Recruiters filter for verified claims first. One issuer-verified role changes how you rank." }
+  const next = d.timeline_count === 0 ? { href: "/timeline#import", label: "Add your first role — or upload your CV", body: "Drop a CV or LinkedIn export and we fill your timeline, skills, education and certifications for you." }
+    : (s?.tier?.level || p.badge_level || "none") === "none" && (s?.claims.issuer_verified ?? 0) === 0 ? { href: "/verification", label: "Get a claim verified", body: "Recruiters filter for verified claims first. One issuer-verified role changes how you rank." }
       : d.generated_cvs === 0 ? { href: "/generate", label: "Tailor a CV to a job", body: "Paste a job description and get a matched, designed CV in under a minute." }
         : { href: "/opportunities", label: "See your best matches", body: `${strong} open role${strong === 1 ? "" : "s"} match you at 60% or more.` };
 
-  const insights: string[] = [];
-  if (d.timeline_count >= 2) insights.push("Professionals with similar verified timelines typically move into senior or cross-functional roles within 18–24 months.");
-  if (p.verification_score >= 40) insights.push("Your verification score is competitive — recruiters filter for verified claims first.");
-  else if (d.timeline_count > 0) insights.push("Adding employment proof for your latest role is the highest-leverage next step for trust.");
-  if (d.generated_cvs === 0 && d.timeline_count > 0) insights.push("You have timeline data ready — generate a tailored CV for an open role in one step.");
-  const gap = s?.skill_coverage.find((r) => r.missing > 0 && r.met === 0);
-  if (gap) insights.push(`"${gap.skill}" shows up in ${gap.demand} open roles you could fit. Adding it, or evidence of it, would lift those matches.`);
+  const level = s?.tier?.level || p.badge_level || "none";
 
   return (
     <div className="space-y-6">
@@ -85,9 +80,26 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat icon={TrendingUp} tint="blue" label="Profile strength" value={`${p.profile_completion}%`} href="/profile" />
-        <Stat icon={ShieldCheck} tint="emerald" label="Verification" value={p.verification_score} sub={s?.claims.label} href="/verification" />
+        <Stat icon={ShieldCheck} tint="emerald" label="Verification" value={<span className="flex items-center gap-2 text-[17px] sm:text-[22px]"><TierEmblem level={level} size={22} />{s?.tier?.label || TIER_NAME[level] || "Not verified"}</span>} sub={s?.tier?.status || s?.claims.label} href="/verification" />
         <Stat icon={FileText} tint="violet" label="Documents" value={docsTotal} href="/documents" />
         <Stat icon={BriefcaseBusiness} tint="amber" label="Strong matches" value={strong} sub={totalMatches ? `of ${totalMatches} open roles` : undefined} href="/opportunities" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <CareerInsights />
+        {s && (
+          <Card title="Trust" icon={BadgeCheck} tint="emerald" href="/verification" hrefLabel="Verify more" className="self-start">
+            <div className="flex items-center gap-4">
+              <TierEmblem level={level} size={56} />
+              <div className="min-w-0 text-sm">
+                <p className="font-semibold">{s.tier?.label || TIER_NAME[level]}</p>
+                <p className="text-muted">{s.claims.label}</p>
+                <div className="mt-2"><TierTrack level={level} /></div>
+              </div>
+            </div>
+            {s.tier && <div className="mt-4 border-t border-border pt-4"><TierChecklist tier={s.tier} compact /></div>}
+          </Card>
+        )}
       </div>
 
       {!s ? <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-60" />)}</div> : (
@@ -127,29 +139,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {s && (
-          <Card title="Trust" icon={BadgeCheck} tint="emerald" href="/verification" hrefLabel="Verify more">
-            <div className="flex items-center gap-4">
-              <Ring value={s.claims.ratio * 100} color="var(--success)" />
-              <div className="text-sm">
-                <p className="font-medium">{s.claims.label}</p>
-                <p className="text-muted">{s.claims.identity_verified ? "Identity verified" : "Identity not verified yet"}{s.badge_level ? ` · ${s.badge_level} badge` : ""}</p>
-              </div>
-            </div>
-          </Card>
-        )}
-        {(insights.length > 0 || d.recommended_actions.length > 0) && (
-          <Card title="Career insights" icon={Lightbulb} tint="amber">
-            <ul className="space-y-3 text-sm text-muted">{insights.map((t) => <li key={t}>{t}</li>)}</ul>
-            {d.recommended_actions.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {d.recommended_actions.map((a) => <Link key={a} href={ACTION_HREF[a] || "/profile"} className="chip">{a}</Link>)}
-              </div>
-            )}
-          </Card>
-        )}
-      </div>
     </div>
   );
 }

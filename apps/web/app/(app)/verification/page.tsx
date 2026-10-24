@@ -11,6 +11,7 @@ import { useMe } from "@/lib/me";
 import { cn, fmtMonth } from "@/lib/utils";
 import { ErrorNote, PageHeader, Sheet, SkeletonList, SoftIcon, toast, type Tint } from "@/components/ui/kit";
 import { OrgPicker } from "@/components/orgs";
+import { TierChecklist, TierEmblem, TierTrack, type Tier } from "@/components/VerificationTier";
 
 type Level = "issuer_verified" | "verified" | "document_provided" | "pending" | "self_reported" | "rejected";
 type Claim = {
@@ -21,6 +22,7 @@ type Claim = {
 type Summary = { total: number; verified: number; issuer_verified: number; document_provided: number; pending: number; self_reported: number; rejected: number; identity_verified: boolean; label: string; ratio: number };
 type Elig = { eligible: boolean; missing: string[] };
 type Overview = {
+  tier: Tier;
   summary: Summary; claims: Claim[]; identity: { verified: boolean; status: string; notes?: string | null; has_document: boolean };
   badge: { level: string; granted_at?: string | null; eligibility: { gray: Elig; green: Elig; current: string }; last_request?: { id: number; level: string; status: string; created_at: string } | null };
 };
@@ -39,16 +41,6 @@ const KIND: Record<string, { icon: typeof Briefcase; tint: Tint; org: "company" 
   certification: { icon: Award, tint: "amber", org: "issuer" },
 };
 
-function Ring({ value, size = 76 }: { value: number; size?: number }) {
-  const r = size / 2 - 6, c = 2 * Math.PI * r;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0 -rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--surface-2)" strokeWidth={7} />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--success)" strokeWidth={7} strokeLinecap="round"
-        strokeDasharray={c} strokeDashoffset={c * (1 - value)} className="chart-line" style={{ transition: "stroke-dashoffset .8s ease" }} />
-    </svg>
-  );
-}
 
 function RequestSheet({ claim, onClose, onDone }: { claim: Claim | null; onClose: () => void; onDone: () => void }) {
   const [org, setOrg] = useState<{ id: number | null; name: string; claim_status?: string }>({ id: null, name: "" });
@@ -152,7 +144,7 @@ function IdentityCard({ id, onDone }: { id: Overview["identity"]; onDone: () => 
   }
   const st = id.verified ? ["pill-green", "Confirmed"] : id.status === "submitted" ? ["pill-amber", "In review"] : id.status === "rejected" ? ["pill-red", "Declined"] : ["pill-gray", "Not started"];
   return (
-    <div className="card flex gap-3 p-4">
+    <div id="identity" className="card flex scroll-mt-20 gap-3 p-4">
       <SoftIcon icon={IdCard} tint="sky" />
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2"><p className="font-medium">Identity</p><span className={`pill ${st[0]}`}>{st[1]}</span></div>
@@ -184,33 +176,33 @@ export default function VerificationPage() {
       <PageHeader title="Verification" lead="Every claim on your profile, and who has confirmed it. Recruiters see the same summary." />
       {!data ? <SkeletonList n={3} lines={2} /> : (
         <div className="space-y-5">
-          <div className="card flex items-center gap-5 p-5">
-            <div className="relative"><Ring value={s!.ratio} />
-              <span className="tabular absolute inset-0 flex items-center justify-center text-lg font-semibold">{Math.round(s!.ratio * 100)}%</span></div>
-            <div className="min-w-0 flex-1">
-              <p className="text-lg font-semibold tracking-tight">{s!.label}</p>
-              <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-                <span className="pill pill-green">{s!.issuer_verified} by issuers</span>
-                {s!.pending > 0 && <span className="pill pill-amber">{s!.pending} pending</span>}
-                {s!.document_provided > 0 && <span className="pill pill-blue">{s!.document_provided} with documents</span>}
-                <span className="pill pill-gray">{s!.self_reported} self-reported</span>
+          <div className="card p-5">
+            <div className="flex flex-wrap items-center gap-4">
+              <TierEmblem level={data.tier.level} size={68} />
+              <div className="min-w-0 flex-1">
+                <p className="eyebrow">Your badge tier</p>
+                <p className="text-lg font-semibold tracking-tight">{data.tier.label}</p>
+                <p className="text-sm text-muted">{data.tier.status}</p>
               </div>
+              <TierTrack level={data.tier.level} />
             </div>
+            <div className="mt-4 flex flex-wrap gap-1.5 text-xs">
+              <span className="pill pill-gray">{s!.label}</span>
+              {s!.issuer_verified > 0 && <span className="pill pill-green">{s!.issuer_verified} by issuers</span>}
+              {s!.pending > 0 && <span className="pill pill-amber">{s!.pending} pending</span>}
+              {s!.document_provided > 0 && <span className="pill pill-blue">{s!.document_provided} with documents</span>}
+              {s!.self_reported > 0 && <span className="pill pill-gray">{s!.self_reported} self-reported</span>}
+            </div>
+            <div className="mt-4 border-t border-border pt-4"><TierChecklist tier={data.tier} /></div>
+            {(data.tier.eligible.gray && b!.level === "none") || (data.tier.eligible.green && b!.level !== "green") || (b!.last_request && b!.last_request.status === "pending_review") ? (
+              <Link href="/badges" className="btn btn-primary btn-sm mt-4 w-full sm:w-auto">
+                <BadgeCheck className="h-4 w-4" />
+                {b!.last_request && b!.last_request.status === "pending_review" ? `Your ${b!.last_request.level} badge request is with our team` : `Request the ${data.tier.eligible.green ? "green" : "gray"} badge`}
+              </Link>
+            ) : (
+              <Link href="/badges" className="link-muted mt-3 inline-flex items-center gap-1 text-xs">About badges <ChevronRight className="h-3.5 w-3.5" /></Link>
+            )}
           </div>
-
-          <Link href="/badges" className="card card-hover flex items-center gap-3 p-4">
-            <SoftIcon icon={BadgeCheck} tint={b!.level === "green" ? "emerald" : "gray"} />
-            <span className="min-w-0 flex-1">
-              <span className="block font-medium">{b!.level === "green" ? "You have the green badge" : b!.level === "gray" ? "You have the gray badge" : "Get a verified badge"}</span>
-              <span className="block text-sm text-muted">
-                {b!.last_request && b!.last_request.status === "pending_review" ? `Your ${b!.last_request.level} badge request is with our team.`
-                  : b!.eligibility.green.eligible && b!.level !== "green" ? "You're eligible for the green badge."
-                    : b!.eligibility.gray.eligible && b!.level === "none" ? "You're eligible for the gray badge."
-                      : b!.level === "green" ? "Identity and key claims confirmed." : (b!.level === "gray" ? b!.eligibility.green.missing[0] : b!.eligibility.gray.missing[0]) || "See what's needed"}
-              </span>
-            </span>
-            <ChevronRight className="h-4 w-4 text-muted" />
-          </Link>
 
           <IdentityCard id={data.identity} onDone={reloadAll} />
 

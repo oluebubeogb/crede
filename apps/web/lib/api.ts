@@ -44,13 +44,7 @@ export async function login(email: string, password: string): Promise<CredeUser>
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const detail = err.detail;
-    const msg =
-      typeof detail === "string"
-        ? detail
-        : Array.isArray(detail)
-          ? detail.map((d: { msg?: string }) => d.msg).join(", ")
-          : res.statusText || "Login failed";
-    throw new Error(msg);
+    throw new Error(detailMessage(detail, res.statusText || "Login failed"));
   }
   const data = await res.json();
   return data.user as CredeUser;
@@ -71,7 +65,7 @@ export async function signup(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const detail = err.detail;
-    throw new Error(typeof detail === "string" ? detail : "Signup failed");
+    throw new Error(detailMessage(detail, "Signup failed"));
   }
   const data = await res.json();
   return data.user as CredeUser;

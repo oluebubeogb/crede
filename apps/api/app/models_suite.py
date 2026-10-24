@@ -150,6 +150,8 @@ class Post(Base):
     share_count: Mapped[int] = mapped_column(Integer, default=0)
     report_count: Mapped[int] = mapped_column(Integer, default=0)
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # Set only when the author edits text/topics (updated_at also moves on likes/comments/shares)
+    edited_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

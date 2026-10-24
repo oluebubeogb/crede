@@ -41,6 +41,8 @@ services:
       LLM_SECONDARY_API_KEY: ${LLM_SECONDARY_API_KEY:-}
       LLM_SECONDARY_BASE_URL: ${LLM_SECONDARY_BASE_URL:-}
       LLM_SECONDARY_MODEL: ${LLM_SECONDARY_MODEL:-}
+      INSIGHTS_AI: ${INSIGHTS_AI:-true}
+      IMPORT_MAX_MB: ${IMPORT_MAX_MB:-10}
       # Storage
       STORAGE_ROOT: ${STORAGE_ROOT:-/data/crede}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
@@ -94,6 +96,7 @@ services:
     build:
       context: ./apps/web
       args:
+        API_PROXY_TARGET: ${API_PROXY_TARGET:-http://crede-api:8008}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
         NEXT_PUBLIC_ACCOUNTS_URL: ${NEXT_PUBLIC_ACCOUNTS_URL:-https://accounts.collab.name.ng}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://crede.collab.name.ng}
@@ -106,6 +109,7 @@ services:
       - default
       - coolify
     environment:
+      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://crede-api:8008}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
       NEXT_PUBLIC_ACCOUNTS_URL: ${NEXT_PUBLIC_ACCOUNTS_URL:-https://accounts.collab.name.ng}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://crede.collab.name.ng}
